@@ -8,7 +8,7 @@
 
 - Public Repository：工作流、租户别名清单、唯一共享的 Private 源码只读凭证 `PRIVATE_REPO_TOKEN`。
 - Private Repository：固定 SHA 的 Python OCI 核心；不包含真实 OCI 凭证。
-- GitHub Environment：**每个 OCI Tenancy 一个独立 Environment**（例如 `ap-singapore-2-8` / `ap-singapore-2-9`），拥有独立的 OCI API Secrets、区域/配额配置；Telegram Bot 由 Repository Secrets 统一管理。
+- GitHub Environment：**每个 OCI Tenancy 一个独立 Environment**（例如 `ap-singapore-2-8` / `ap-singapore-2-9`），拥有独立的 OCI API Secrets、可选配额配置；Telegram Bot 由 Repository Secrets 统一管理。
 - `check` 支持选单个租户或 `all`；独立矩阵 Job 执行（最多同时 2 个，失败互不取消）。
 - `live` 强制选单个租户；同时需要全局 + 单租户的人工开关。默认均关闭。
 - 账号之间不共享 OCI 私钥；每个任务都在临时 GitHub-hosted Runner 中执行。不能承诺绝对保密：拥有 Public 工作流写权限的人仍有机会修改代码窃取其可访问的 Secrets，因此应限制写权限并设置 Environment 审批保护。部署作业引用对应 Environment；普通 `dry-run` 完全不引用任何 Environment。
@@ -26,7 +26,7 @@
 | Repository Variable | `OCI_HUNTER_READ_ONLY_ENABLED` | `true` 后才允许执行 `check` |
 | Repository Variable | `OCI_HUNTER_LIVE_ENABLED` | **暂不设置为 true**（仅在明确批准实际创建时） |
 
-`OCI_TENANTS` 只包含与 OCI 账号对应的**匿名别名**，不要放 OCID、私钥、邮箱、密码。别名可以使用 `ap-singapore-2-8` 这样“区域+账号序号”的格式。使用 3–48 位小写英文字母、数字和连字符，必须以字母开头、以字母或数字结尾，不能是保留字 `all`，最多 20 个。原有 `oci-main` / `oci-backup` 也继续支持。它们必须与下面的 GitHub Environment 名称**完全一致**。**别名只是标识，不会自动设置实际 OCI 区域**；仍需在每个 Environment 的 `REGION` 填入正确的 Region ID。
+`OCI_TENANTS` 只包含与 OCI 账号对应的**匿名别名**，不要放 OCID、私钥、邮箱、密码。别名可以使用 `ap-singapore-2-8` 这样“区域+账号序号”的格式。使用 3–48 位小写英文字母、数字和连字符，必须以字母开头、以字母或数字结尾，不能是保留字 `all`，最多 20 个。原有 `oci-main` / `oci-backup` 也继续支持。它们必须与下面的 GitHub Environment 名称**完全一致**。**别名只是标识，不会自动设置实际 OCI 区域**；仍需在每个 Environment Secret `REGION` 填入正确的 Region ID。
 
 ### 2. 每个租户创建独立的 GitHub Environment
 
@@ -37,20 +37,20 @@
 - `ap-singapore-2-8`
 - `ap-singapore-2-9`
 
-两者分别配置下面的 **Environment Secrets**（不是 Repository Secrets）：
+两者分别配置下面的 **5 个 Environment Secrets**（不是 Repository Secrets，也不用另外在 Environment Variables 中重复添加）：
 
 | Environment Secret | 用途 |
 |---|---|
 | `TENANCY` | 当前租户 Tenancy OCID（对应 OCI 官方 `tenancy`） |
 | `USER` | 当前租户 API User OCID（对应 OCI 官方 `user`） |
 | `FINGERPRINT` | 当前租户 API Key 指纹（对应 OCI 官方 `fingerprint`） |
-| `OCI_PRIVATE_KEY` | 当前租户 OCI API 私钥 PEM |
+| `OCI_PRIVATE_KEY` | 当前租户 OCI API 私钥 PEM | 
+| `REGION` | 必填，例如 `ap-singapore-2` 或 `ap-tokyo-1`（按实际租户设置） |
 
-分别配置下面的 **Environment Variables**：
+如有特殊需求，再配置下面的 **可选 Environment Variables**（默认不需要填写）：
 
 | Environment Variable | 用途 |
 |---|---|
-| `REGION` | 必填，例如 `ap-singapore-2` 或 `ap-tokyo-1`（按实际租户设置） |
 | `OCI_COMPARTMENT_OCID` | 可选，仅当实例位于子 Compartment 时设置；默认使用 `TENANCY`（根 Compartment） |
 | `OCI_GUARD_COMPARTMENT_OCIDS` | 可选，额外需要统计的 compartment OCID，逗号分隔 |
 | `OCI_INSTANCE_NAME` | 可选，默认 `oci-a1-hunter` |
@@ -96,7 +96,7 @@
 | `user` | `USER` | Environment Secret |
 | `fingerprint` | `FINGERPRINT` | Environment Secret |
 | `tenancy` | `TENANCY` | Environment Secret |
-| `region` | `REGION` | Environment Variable |
+| `region` | `REGION` | Environment Secret |
 | `key_file` | `OCI_PRIVATE_KEY`（PEM 私钥全文，不是路径） | Environment Secret |
 
-配置 OCI API 只需上述 **4 个 Environment Secrets + 1 个 Environment Variable**。GitHub 会将 Secrets/Variables 名称显示为大写，但引用不区分大小写。工作流将这些短名称映射为 Private Python 核心所需的内部环境变量。默认使用 `TENANCY` 作为根 Compartment ID；不要求额外 Compartment OCID。OCI SDK 使用内存中的 `key_content`，不把私钥写入文件。
+配置 OCI API 只需上述 **5 个 Environment Secrets**。GitHub 会将 Secrets/Variables 名称显示为大写，但引用不区分大小写。工作流将这些短名称映射为 Private Python 核心所需的内部环境变量。默认使用 `TENANCY` 作为根 Compartment ID；不要求额外 Compartment OCID。OCI SDK 使用内存中的 `key_content`，不把私钥写入文件。
