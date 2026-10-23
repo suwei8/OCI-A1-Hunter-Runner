@@ -1,10 +1,10 @@
-name: OCI A1 Hunter (manual safe mode)
+name: OCI A1 Hunter (manual multi-tenancy)
 
 on:
   workflow_dispatch:
     inputs:
       mode:
-        description: "dry-run never calls OCI; check only reads OCI; live requires explicit enablement"
+        description: "dry-run: offline; check: OCI read-only; live: explicit approval required"
         type: choice
         required: true
         default: dry-run
@@ -12,53 +12,136 @@ on:
           - dry-run
           - check
           - live
+      tenant:
+        description: "Registered Environment alias, or all (check only)"
+        type: string
+        required: true
+        default: all
 
-# Intentionally NO schedule until credentials, permissions and dry-run have been reviewed.
+# NO schedule. Only manual dry-run/check until each tenant has been audited.
 permissions:
   contents: read
 
-concurrency:
-  group: oci-a1-hunter-production
-  cancel-in-progress: false
-
 jobs:
-  hunter:
+  dry-run:
+    if: ${{ inputs.mode == 'dry-run' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 12
     steps:
-      - name: Require fine-grained private repository token
+      - name: Require read-only private source token
         env:
           REPO_TOKEN: ${{ secrets.PRIVATE_REPO_TOKEN }}
         run: |
           test -n "$REPO_TOKEN" || { echo "Configure PRIVATE_REPO_TOKEN first"; exit 1; }
-
       - name: Checkout audited private source
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
         with:
           repository: suwei8/OCI-A1-Hunter
-          ref: 2e258140628ffefc97cac5c029fc634f9e13f016
+          ref: 0d1eeccd820dece319ba10c90ee5aaa7df1f8c85
           token: ${{ secrets.PRIVATE_REPO_TOKEN }}
           persist-credentials: false
           path: hunter
+      - name: Install Private Python project
+        run: |
+          python3 -m venv .venv
+          .venv/bin/python -m pip install --disable-pip-version-check -c ./hunter/constraints.txt ./hunter
+      - name: Offline dry-run (no OCI secrets)
+        run: .venv/bin/oci-a1-hunter --dry-run
 
-      - name: Install Python project
+  prepare:
+    if: ${{ inputs.mode != 'dry-run' }}
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    timeout-minutes: 2
+    outputs:
+      matrix: ${{ steps.tenants.outputs.matrix }}
+    steps:
+      - name: Validate public tenant aliases (never credentials)
+        id: tenants
+        env:
+          TENANT_ALIASES_JSON: ${{ vars.OCI_TENANTS }}
+          REQUESTED_TENANT: ${{ inputs.tenant }}
+          REQUESTED_MODE: ${{ inputs.mode }}
+        run: |
+          python3 - <<'PY'
+          import json
+          import os
+          import re
+
+          raw = os.environ.get("TENANT_ALIASES_JSON") or ""
+          if not raw:
+              raise SystemExit("Set repository variable OCI_TENANTS to a JSON array of Environment aliases")
+          try:
+              registered = json.loads(raw)
+          except ValueError:
+              raise SystemExit("OCI_TENANTS must be a valid JSON array")
+          if not isinstance(registered, list) or not 1 <= len(registered) <= 20:
+              raise SystemExit("OCI_TENANTS must contain 1 to 20 names")
+          valid = re.compile(r"oci-[a-z0-9][a-z0-9-]{0,39}\Z")
+          if any(not isinstance(name, str) or not valid.fullmatch(name) for name in registered):
+              raise SystemExit("Invalid tenant alias: use oci- followed by lowercase letters, numbers or hyphens")
+          if len(registered) != len(set(registered)):
+              raise SystemExit("Duplicate OCI_TENANTS aliases are forbidden")
+          requested = os.environ["REQUESTED_TENANT"]
+          mode = os.environ["REQUESTED_MODE"]
+          if mode == "live" and requested == "all":
+              raise SystemExit("Live mode MUST target exactly one named tenancy")
+          if requested != "all" and requested not in registered:
+              raise SystemExit("Requested tenant is not registered in OCI_TENANTS")
+          selected = registered if requested == "all" else [requested]
+          with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as output:
+              output.write("matrix=" + json.dumps({"tenant": selected}, separators=(",", ":")) + "\n")
+          print("Validated tenant job count:", len(selected))
+          PY
+
+  tenant-check-or-live:
+    if: ${{ inputs.mode != 'dry-run' }}
+    needs: prepare
+    name: ${{ matrix.tenant }} / ${{ inputs.mode }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    strategy:
+      fail-fast: false
+      max-parallel: 2
+      matrix: ${{ fromJSON(needs.prepare.outputs.matrix) }}
+    environment:
+      name: ${{ matrix.tenant }}
+      deployment: false
+    concurrency:
+      group: oci-a1-hunter-${{ matrix.tenant }}
+      cancel-in-progress: false
+    steps:
+      - name: Require read-only private source token
+        env:
+          REPO_TOKEN: ${{ secrets.PRIVATE_REPO_TOKEN }}
+        run: |
+          test -n "$REPO_TOKEN" || { echo "Configure PRIVATE_REPO_TOKEN first"; exit 1; }
+      - name: Checkout audited private source
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          repository: suwei8/OCI-A1-Hunter
+          ref: 0d1eeccd820dece319ba10c90ee5aaa7df1f8c85
+          token: ${{ secrets.PRIVATE_REPO_TOKEN }}
+          persist-credentials: false
+          path: hunter
+      - name: Install Private Python project
         run: |
           python3 -m venv .venv
           .venv/bin/python -m pip install --disable-pip-version-check -c ./hunter/constraints.txt ./hunter
 
-      - name: Dry run without OCI credentials
-        if: ${{ inputs.mode == 'dry-run' }}
-        run: .venv/bin/oci-a1-hunter --dry-run
-
-      - name: Block unauthorized read-only OCI check
+      - name: Block read-only check if not enabled
         if: ${{ inputs.mode == 'check' && vars.OCI_HUNTER_READ_ONLY_ENABLED != 'true' }}
         run: |
-          echo "Read-only OCI check blocked; set repository variable OCI_HUNTER_READ_ONLY_ENABLED=true first."
+          echo "Read-only OCI check disabled: OCI_HUNTER_READ_ONLY_ENABLED must equal true"
           exit 1
 
-      - name: OCI read-only check (no instance launch)
+      - name: Read-only OCI check for this tenancy only
         if: ${{ inputs.mode == 'check' && vars.OCI_HUNTER_READ_ONLY_ENABLED == 'true' }}
         env:
+          OCI_HUNTER_MULTI_TENANT: "true"
+          OCI_TENANT_ALIAS: ${{ matrix.tenant }}
+          OCI_TENANT_EXPECTED_OCID: ${{ vars.OCI_TENANT_EXPECTED_OCID }}
           OCI_HUNTER_READ_ONLY_ENABLED: "true"
           OCI_REGION: ${{ vars.OCI_REGION }}
           OCI_COMPARTMENT_OCID: ${{ vars.OCI_COMPARTMENT_OCID }}
@@ -75,16 +158,20 @@ jobs:
           TG_CHAT_ID: ${{ secrets.TG_CHAT_ID }}
         run: .venv/bin/oci-a1-hunter --check
 
-      - name: Block unauthorized live request
-        if: ${{ inputs.mode == 'live' && vars.OCI_HUNTER_LIVE_ENABLED != 'true' }}
+      - name: Block unauthorized tenant live request
+        if: ${{ inputs.mode == 'live' && (vars.OCI_HUNTER_LIVE_ENABLED != 'true' || vars.OCI_TENANT_LIVE_APPROVED != 'true') }}
         run: |
-          echo "Live execution blocked; repository variable OCI_HUNTER_LIVE_ENABLED must be true."
+          echo "Live blocked; require global OCI_HUNTER_LIVE_ENABLED and per-tenant OCI_TENANT_LIVE_APPROVED"
           exit 1
 
-      - name: Live run (explicit opt-in only)
-        if: ${{ inputs.mode == 'live' && vars.OCI_HUNTER_LIVE_ENABLED == 'true' }}
+      - name: Live run (single tenancy, double opt-in)
+        if: ${{ inputs.mode == 'live' && vars.OCI_HUNTER_LIVE_ENABLED == 'true' && vars.OCI_TENANT_LIVE_APPROVED == 'true' }}
         env:
+          OCI_HUNTER_MULTI_TENANT: "true"
+          OCI_TENANT_ALIAS: ${{ matrix.tenant }}
+          OCI_TENANT_EXPECTED_OCID: ${{ vars.OCI_TENANT_EXPECTED_OCID }}
           OCI_HUNTER_LIVE_ENABLED: "true"
+          OCI_HUNTER_TENANT_LIVE_APPROVED: "true"
           OCI_REGION: ${{ vars.OCI_REGION }}
           OCI_COMPARTMENT_OCID: ${{ vars.OCI_COMPARTMENT_OCID }}
           OCI_SUBNET_OCID: ${{ vars.OCI_SUBNET_OCID }}
