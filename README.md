@@ -8,7 +8,7 @@
 
 - Public Repository：工作流、租户别名清单、唯一共享的 Private 源码只读凭证 `PRIVATE_REPO_TOKEN`。
 - Private Repository：固定 SHA 的 Python OCI 核心；不包含真实 OCI 凭证。
-- GitHub Environment：**每个 OCI Tenancy 一个独立 Environment**（例如 `oci-main` / `oci-backup`），拥有独立的 OCI API Secrets、区域/配额配置与 TG Bot。
+- GitHub Environment：**每个 OCI Tenancy 一个独立 Environment**（例如 `ap-singapore-2-8` / `ap-singapore-2-9`），拥有独立的 OCI API Secrets、区域/配额配置与 TG Bot。
 - `check` 支持选单个租户或 `all`；独立矩阵 Job 执行（最多同时 2 个，失败互不取消）。
 - `live` 强制选单个租户；同时需要全局 + 单租户的人工开关。默认均关闭。
 - 账号之间不共享 OCI 私钥；每个任务都在临时 GitHub-hosted Runner 中执行。不能承诺绝对保密：拥有 Public 工作流写权限的人仍有机会修改代码窃取其可访问的 Secrets，因此应限制写权限并设置 Environment 审批保护。部署作业引用对应 Environment；普通 `dry-run` 完全不引用任何 Environment。
@@ -20,20 +20,20 @@
 | 范围 | 名称 | 设置 |
 |---|---|---|
 | Repository Secret | `PRIVATE_REPO_TOKEN` | 仅限 `suwei8/OCI-A1-Hunter` 仓库、Contents Read-only 的 Fine-grained PAT |
-| Repository Variable | `OCI_TENANTS` | JSON 字符串，如 `["oci-main","oci-backup"]` |
+| Repository Variable | `OCI_TENANTS` | JSON 字符串，如 `["ap-singapore-2-8","ap-singapore-2-9"]` |
 | Repository Variable | `OCI_HUNTER_READ_ONLY_ENABLED` | `true` 后才允许执行 `check` |
 | Repository Variable | `OCI_HUNTER_LIVE_ENABLED` | **暂不设置为 true**（仅在明确批准实际创建时） |
 
-`OCI_TENANTS` 只包含与 OCI 账号对应的**匿名别名**，不要放 OCID、私钥、邮箱、密码。别名须以 `oci-` 开头、使用小写字母/数字/连字符（最长 44 字符），最多 20 个。它们必须与下面的 GitHub Environment 名称**完全一致**。
+`OCI_TENANTS` 只包含与 OCI 账号对应的**匿名别名**，不要放 OCID、私钥、邮箱、密码。别名可以使用 `ap-singapore-2-8` 这样“区域+账号序号”的格式。使用 3–48 位小写英文字母、数字和连字符，必须以字母开头、以字母或数字结尾，不能是保留字 `all`，最多 20 个。原有 `oci-main` / `oci-backup` 也继续支持。它们必须与下面的 GitHub Environment 名称**完全一致**。**别名只是标识，不会自动设置实际 OCI 区域**；仍需在每个 Environment 的 `OCI_REGION` 填入正确的 Region ID。
 
 ### 2. 每个租户创建独立的 GitHub Environment
 
 打开 Public 仓库 Settings → Environments → New environment。
 
-例如创建两个：
+例如分别创建两个独立 Environment（不能仅修改清单而不创建同名 Environment）：
 
-- `oci-main`
-- `oci-backup`
+- `ap-singapore-2-8`
+- `ap-singapore-2-9`
 
 两者分别配置下面的 **Environment Secrets**（不是 Repository Secrets）：
 
@@ -72,9 +72,9 @@
 | mode | tenant | 作用 |
 |---|---|---|
 | `dry-run` | `all`（忽略此输入） | 离线验证安装与 Python CLI，不接触 OCI |
-| `check` | `oci-main` | 只读验证主租户 OCI 凭证与现有 A1 用量 |
+| `check` | `ap-singapore-2-8` | 只读验证主租户 OCI 凭证与现有 A1 用量 |
 | `check` | `all` | 按 `OCI_TENANTS` 自动生成独立查询 Job，分别报告 |
-| `live` | `oci-main` | **可能创建实例**，受两级开关保护 |
+| `live` | `ap-singapore-2-8` | **可能创建实例**，受两级开关保护 |
 | `live` | `all` | **拒绝执行**；禁止跨全部租户一键创建 |
 
 工作流使用固定的 Private commit、GitHub-hosted Runner、`persist-credentials:false`、只读 `GITHUB_TOKEN` 和每租户独立并发锁。不使用自托管 OCI 主机，不将 OCI 凭证写入仓库/数据库/永久文件。
