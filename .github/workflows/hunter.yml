@@ -4,13 +4,14 @@ on:
   workflow_dispatch:
     inputs:
       mode:
-        description: "dry-run: offline; check: OCI read-only; live: explicit approval required"
+        description: "dry-run: offline; check: scoped read-only; audit: tenancy-wide read-only; live: approved"
         type: choice
         required: true
         default: dry-run
         options:
           - dry-run
           - check
+          - audit
           - live
       tenant:
         description: "Registered Environment alias, or all (check only)"
@@ -37,7 +38,7 @@ jobs:
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
         with:
           repository: suwei8/OCI-A1-Hunter
-          ref: 5ef7b02886e7f84e8097f6b0ca777d58a6bb02b5
+          ref: 8e5f3dc7437939b445e0f7c778838aac0aeb887f
           token: ${{ secrets.PRIVATE_REPO_TOKEN }}
           persist-credentials: false
           path: hunter
@@ -123,7 +124,7 @@ jobs:
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
         with:
           repository: suwei8/OCI-A1-Hunter
-          ref: 5ef7b02886e7f84e8097f6b0ca777d58a6bb02b5
+          ref: 8e5f3dc7437939b445e0f7c778838aac0aeb887f
           token: ${{ secrets.PRIVATE_REPO_TOKEN }}
           persist-credentials: false
           path: hunter
@@ -133,17 +134,18 @@ jobs:
           .venv/bin/python -m pip install --disable-pip-version-check -c ./hunter/constraints.txt ./hunter
 
       - name: Block read-only check if not enabled
-        if: ${{ inputs.mode == 'check' && vars.OCI_HUNTER_READ_ONLY_ENABLED != 'true' }}
+        if: ${{ (inputs.mode == 'check' || inputs.mode == 'audit') && vars.OCI_HUNTER_READ_ONLY_ENABLED != 'true' }}
         run: |
           echo "Read-only OCI check disabled: OCI_HUNTER_READ_ONLY_ENABLED must equal true"
           exit 1
 
-      - name: Read-only OCI check for this tenancy only
-        if: ${{ inputs.mode == 'check' && vars.OCI_HUNTER_READ_ONLY_ENABLED == 'true' }}
+      - name: Read-only OCI check or tenant audit
+        if: ${{ (inputs.mode == 'check' || inputs.mode == 'audit') && vars.OCI_HUNTER_READ_ONLY_ENABLED == 'true' }}
         env:
           OCI_HUNTER_MULTI_TENANT: "true"
           OCI_TENANT_ALIAS: ${{ matrix.tenant }}
           OCI_HUNTER_READ_ONLY_ENABLED: "true"
+          OCI_HUNTER_EXECUTION_MODE: ${{ inputs.mode }}
           OCI_REGION: ${{ secrets.REGION }}
           OCI_COMPARTMENT_OCID: ${{ vars.OCI_COMPARTMENT_OCID }}
           OCI_INSTANCE_NAME: ${{ vars.OCI_INSTANCE_NAME }}
@@ -157,7 +159,12 @@ jobs:
           OCI_PRIVATE_KEY: ${{ secrets.OCI_PRIVATE_KEY }}
           TG_BOT_TOKEN: ${{ secrets.TG_BOT_TOKEN }}
           TG_CHAT_ID: ${{ secrets.TG_CHAT_ID }}
-        run: .venv/bin/oci-a1-hunter --check
+        run: |
+          case "$OCI_HUNTER_EXECUTION_MODE" in
+            check) .venv/bin/oci-a1-hunter --check ;;
+            audit) .venv/bin/oci-a1-hunter --audit ;;
+            *) echo "Unsupported read-only mode"; exit 1 ;;
+          esac
 
       - name: Block unauthorized tenant live request
         if: ${{ inputs.mode == 'live' && (vars.OCI_HUNTER_LIVE_ENABLED != 'true' || vars.OCI_TENANT_LIVE_APPROVED != 'true') }}
