@@ -6,19 +6,19 @@
 
 ## 架构
 
-Public Actions -> 私有仓库只读 SSH Deploy Key -> 固定源码 commit -> Python CLI -> OCI + Telegram。
+Public Actions -> 私有仓库 Fine-grained PAT（只读） -> 固定源码 commit -> Python CLI -> OCI + Telegram。
 
-Public 标准 GitHub-hosted Runner 免费执行，但 Actions 运行日志是公开的。禁止在输出、artifact 或缓存中存储 OCI 私钥、SSH Deploy Key 和 Telegram Token。
+Public 标准 GitHub-hosted Runner 免费执行，但 Actions 运行日志是公开的。禁止在输出、artifact 或缓存中存储 OCI 私钥、Fine-grained PAT 和 Telegram Token。
 
 ## 安全配置（暂时不必设置）
 
-在 Private 仓库 Settings -> Deploy keys 添加专用公钥（**Allow write access 保持关闭**）。
+创建仅限 `suwei8/OCI-A1-Hunter` 仓库、`Contents: Read-only` 的 Fine-grained Personal Access Token。将其放入 Public 仓库的 `PRIVATE_REPO_TOKEN` Secret，避免给予其他仓库权限。Token 到期后需要轮换。
 
 在本 Public 仓库 Settings -> Secrets and variables -> Actions 中设置：
 
 | Secret | 用途 |
 |---|---|
-| `PRIVATE_REPO_SSH_KEY` | 对 Private 仓库只读 Deploy Key 私钥 |
+| `PRIVATE_REPO_TOKEN` | 只读拉取 Private 仓库的 Fine-grained PAT |
 | `OCI_PRIVATE_KEY` | OCI API 签名私钥（PEM 原文） |
 | `OCI_TENANCY_OCID` | tenancy OCID |
 | `OCI_USER_OCID` | 专用 IAM user OCID |
@@ -33,7 +33,7 @@ Public 标准 GitHub-hosted Runner 免费执行，但 Actions 运行日志是公
 
 ## 启用生产前的人工清单
 
-1. 只读 Deploy Key、受限 OCI IAM 用户、必要网络资源和子网已创建。
+1. 仅限 Private 仓库的只读 Fine-grained PAT、受限 OCI IAM 用户、必要网络资源和子网已创建。
 2. 确认账号中所有 A1 实例的总用量，尤其检查其他 compartment/region；目前核心只统计目标 compartment。
 3. 将 Private 代码固定到审核后的 SHA（工作流已固定首个提交）。
 4. 配置 Secrets/Variables，限制 Public 工作流变更权限。
