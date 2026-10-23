@@ -1,67 +1,91 @@
-# OCI-A1-Hunter-Runner (Public)
+# OCI-A1-Hunter-Runner (Public / 多租户工作流)
 
-公开调度仓库，实际 Python 源码保存在私有仓库 [suwei8/OCI-A1-Hunter](https://github.com/suwei8/OCI-A1-Hunter)。
+公开的 GitHub-hosted Actions 调度层；实际 Python 核心存放在 Private 仓库 [suwei8/OCI-A1-Hunter](https://github.com/suwei8/OCI-A1-Hunter)。
 
-**当前安全状态：仅 `workflow_dispatch` 手动触发；没有启用 cron；默认 `dry-run`，不访问 OCI。新增 `check` 只读查询，需要单独开关；`live` 创建需要另一个独立开关。**
+> **当前安全状态：只有手动触发，没有 `schedule`；默认 `dry-run` 不访问 OCI。** 不配置或授权 `live` 就不会创建实例。Public 工作流日志公开，禁止在日志或 artifact 中存放密钥。
 
-## 架构
+## 多租户结构
 
-Public Actions -> 私有仓库 Fine-grained PAT（只读） -> 固定源码 commit -> Python CLI -> OCI + Telegram。
+- Public Repository：工作流、租户别名清单、唯一共享的 Private 源码只读凭证 `PRIVATE_REPO_TOKEN`。
+- Private Repository：固定 SHA 的 Python OCI 核心；不包含真实 OCI 凭证。
+- GitHub Environment：**每个 OCI Tenancy 一个独立 Environment**（例如 `oci-main` / `oci-backup`），拥有独立的 OCI API Secrets、区域/配额配置与 TG Bot。
+- `check` 支持选单个租户或 `all`；独立矩阵 Job 执行（最多同时 2 个，失败互不取消）。
+- `live` 强制选单个租户；同时需要全局 + 单租户的人工开关。默认均关闭。
+- 账号之间不共享 OCI 私钥；每个任务都在临时 GitHub-hosted Runner 中执行。不能承诺绝对保密：拥有 Public 工作流写权限的人仍有机会修改代码窃取其可访问的 Secrets，因此应限制写权限并设置 Environment 审批保护。部署作业引用对应 Environment；普通 `dry-run` 完全不引用任何 Environment。
 
-Public 标准 GitHub-hosted Runner 免费执行，但 Actions 运行日志是公开的。禁止在输出、artifact 或缓存中存储 OCI 私钥、Fine-grained PAT 和 Telegram Token。
+### 1. 配置 Public Repository 级别的参数
 
-## 安全配置（运行 check 前设置 OCI 凭证）
+打开 Settings → Secrets and variables → Actions。
 
-创建仅限 `suwei8/OCI-A1-Hunter` 仓库、`Contents: Read-only` 的 Fine-grained Personal Access Token。将其放入 Public 仓库的 `PRIVATE_REPO_TOKEN` Secret，避免给予其他仓库权限。Token 到期后需要轮换。
-
-在本 Public 仓库 Settings -> Secrets and variables -> Actions 中设置：
-
-| Secret | 用途 |
-|---|---|
-| `PRIVATE_REPO_TOKEN` | 只读拉取 Private 仓库的 Fine-grained PAT |
-| `OCI_PRIVATE_KEY` | OCI API 签名私钥（PEM 原文） |
-| `OCI_TENANCY_OCID` | tenancy OCID |
-| `OCI_USER_OCID` | 专用 IAM user OCID |
-| `OCI_FINGERPRINT` | OCI API 指纹 |
-| `TG_BOT_TOKEN` | Telegram Bot Token |
-| `TG_CHAT_ID` | Telegram Chat ID |
-
-在 Actions Variables 中设置：
-`OCI_REGION`, `OCI_COMPARTMENT_OCID`, `OCI_SUBNET_OCID`, `OCI_IMAGE_OCID`, `OCI_SSH_PUBLIC_KEY`, `OCI_INSTANCE_NAME`（默认 oci-a1-hunter），可选 `OCI_AD_NAMES`、`OCI_GUARD_COMPARTMENT_OCIDS`（要统计的其他 compartment OCID，逗号分隔）、`OCI_A1_BUDGET_OCPUS` 和 `OCI_A1_BUDGET_MEMORY_GB`（默认 2/12，超出默认值须先核对 OCI 实际权益）。
-
-**注意**：OCI API 私钥不在 Private 代码仓库，也不应放进 Public 文件；它只在 `check` 或 `live` 执行步骤中由 GitHub Actions 注入临时 Runner 环境变量，切勿打印、上传 artifact 或缓存。Public 仓库工作流的编辑权限必须严格限制。
-
-## 手动运行模式
-
-进入本仓库 Actions -> OCI A1 Hunter (manual safe mode) -> Run workflow：
-
-| mode | 所需配置 | 行为 |
+| 范围 | 名称 | 设置 |
 |---|---|---|
-| `dry-run`（默认） | `PRIVATE_REPO_TOKEN` | 安装 Private 源码并运行模拟；绝不访问 OCI |
-| `check` | OCI API Secrets + 基础 Variables + `OCI_HUNTER_READ_ONLY_ENABLED=true` | **只读**调用 OCI List API，统计可见 compartment 内现有 A1 消耗，计算 2 OCPU/12GB 预算，发送可选 TG 摘要 |
-| `live` | 全部启动配置 + `OCI_HUNTER_LIVE_ENABLED=true` | **可能创建** A1 实例；当前阶段不要启用 |
+| Repository Secret | `PRIVATE_REPO_TOKEN` | 仅限 `suwei8/OCI-A1-Hunter` 仓库、Contents Read-only 的 Fine-grained PAT |
+| Repository Variable | `OCI_TENANTS` | JSON 字符串，如 `["oci-main","oci-backup"]` |
+| Repository Variable | `OCI_HUNTER_READ_ONLY_ENABLED` | `true` 后才允许执行 `check` |
+| Repository Variable | `OCI_HUNTER_LIVE_ENABLED` | **暂不设置为 true**（仅在明确批准实际创建时） |
 
-`check` 的最小变量是 `OCI_REGION`, `OCI_COMPARTMENT_OCID`；可选 `OCI_AD_NAMES`, `OCI_GUARD_COMPARTMENT_OCIDS`, `OCI_INSTANCE_NAME`、预算变量。**无需 `OCI_SUBNET_OCID`、`OCI_IMAGE_OCID`、`OCI_SSH_PUBLIC_KEY`**，也不需要给 OCI 用户创建实例权限。OCI IAM 专用用户应只获准读取必要的 compartment 资源。缺失或读取失败会报错，不会创建、修改、删除实例。
+`OCI_TENANTS` 只包含与 OCI 账号对应的**匿名别名**，不要放 OCID、私钥、邮箱、密码。别名须以 `oci-` 开头、使用小写字母/数字/连字符（最长 44 字符），最多 20 个。它们必须与下面的 GitHub Environment 名称**完全一致**。
 
-**审计边界**：只统计配置的 compartment（含额外显式列举）的该区域 A1 实例；不自动跨 region、跨所有子 compartment。若存在其他占用，人工核实 OCI Console 服务限额后才能安全启用生产模式。
+### 2. 每个租户创建独立的 GitHub Environment
 
-## 启用生产前的人工清单
+打开 Public 仓库 Settings → Environments → New environment。
 
-1. 仅限 Private 仓库的只读 Fine-grained PAT、受限 OCI IAM 用户、必要网络资源和子网已创建。
-2. 确认账号所有 A1 实例的总用量，尤其核查其他 compartment/region；当前核心扫描目标与手工列举的额外 compartment，不跨 region 自动扫描。
-3. 将 Private 代码固定到审核后的 SHA（工作流已固定安全修订提交），安装使用 `constraints.txt` 固定已验证的依赖版本；目前尚未使用包哈希锁定。
-4. 配置 Secrets/Variables，限制 Public 工作流变更权限。
-5. 先完成 `dry-run`，再设置 `OCI_HUNTER_READ_ONLY_ENABLED=true` 选择 `check` 验证实际可见配额。**只有另外明确批准创建实例时**，才设置 `OCI_HUNTER_LIVE_ENABLED=true` 并选择 `live`。
-6. 核验成功后，才能单独提交定时 `schedule` 配置。不要在此阶段启用 cron。
+例如创建两个：
 
-## 安全原则
+- `oci-main`
+- `oci-backup`
 
-- 无 `pull_request_target`，不对任何 PR 暴露 Secrets。
-- GitHub token 只读；checkout 不持久化凭证。
-- 工作流锁住固定 Private commit，不跟踪其 main 的浮动变化。
-- 本项目没有删除、停止、重建已有实例的代码。
-- OCI 请求日志不含完整异常内容或私钥。
+两者分别配置下面的 **Environment Secrets**（不是 Repository Secrets）：
 
-## 默认免费额度保护
+| Environment Secret | 用途 |
+|---|---|
+| `OCI_TENANCY_OCID` | 当前租户 Tenancy OCID |
+| `OCI_USER_OCID` | 当前租户专用 IAM User |
+| `OCI_FINGERPRINT` | 当前租户 API Key 指纹 |
+| `OCI_PRIVATE_KEY` | 当前租户 OCI API 私钥 PEM |
+| `TG_BOT_TOKEN` | 可选，当前租户 TG Bot |
+| `TG_CHAT_ID` | 可选，通知接收 Chat ID |
 
-OCI 当前 Always Free 文档描述 A1 每月 1,500 OCPU 小时与 9,000 GB 小时，约等于 2C12G 整月运行。因此本项目默认总预算 **2 OCPU / 12GB**。该数值与某些旧版 4C24G 教程不同。请核对具体 tenancy 的权益后再设置更高预算。容量扫描不能取代 OCI 官方 service limits，也不保证全租户/跨区域统计完全。
+分别配置下面的 **Environment Variables**：
+
+| Environment Variable | 用途 |
+|---|---|
+| `OCI_TENANT_EXPECTED_OCID` | 必填，必须与该 Environment 的 `OCI_TENANCY_OCID` 相同 |
+| `OCI_REGION` | 必填，例如 `ap-singapore-1`（按实际租户设置） |
+| `OCI_COMPARTMENT_OCID` | 必填，目标 compartment |
+| `OCI_GUARD_COMPARTMENT_OCIDS` | 可选，额外需要统计的 compartment OCID，逗号分隔 |
+| `OCI_INSTANCE_NAME` | 可选，默认 `oci-a1-hunter` |
+| `OCI_AD_NAMES` | 可选，限制 AD 名称 |
+| `OCI_A1_BUDGET_OCPUS` | 可选，每租户默认 **2** |
+| `OCI_A1_BUDGET_MEMORY_GB` | 可选，每租户默认 **12** |
+
+未来需要 `live` 时，**在对应 Environment** 另加：
+`OCI_SUBNET_OCID`, `OCI_IMAGE_OCID`, `OCI_SSH_PUBLIC_KEY`, `OCI_TENANT_LIVE_APPROVED=true`；
+同时还需要上面的 Repository `OCI_HUNTER_LIVE_ENABLED=true`。当前不要开启。
+
+**迁移提醒**：若此前把 `OCI_PRIVATE_KEY`、`OCI_USER_OCID` 等 OCI 凭证配置在 Repository Secrets，请在确认所有 Environment 已独立配置后**移除 Repository 级 OCI Secrets**。GitHub Secrets 存在作用域回退，防止错误回退是多租户隔离的重要一环；代码还会检查 `OCI_TENANT_EXPECTED_OCID` 与 `OCI_TENANCY_OCID` 相等，不一致则在连接 OCI 之前拒绝执行。
+
+### 3. 手动测试
+
+进入 [OCI A1 Hunter Actions](https://github.com/suwei8/OCI-A1-Hunter-Runner/actions/workflows/hunter.yml) → Run workflow：
+
+| mode | tenant | 作用 |
+|---|---|---|
+| `dry-run` | `all`（忽略此输入） | 离线验证安装与 Python CLI，不接触 OCI |
+| `check` | `oci-main` | 只读验证主租户 OCI 凭证与现有 A1 用量 |
+| `check` | `all` | 按 `OCI_TENANTS` 自动生成独立查询 Job，分别报告 |
+| `live` | `oci-main` | **可能创建实例**，受两级开关保护 |
+| `live` | `all` | **拒绝执行**；禁止跨全部租户一键创建 |
+
+工作流使用固定的 Private commit、GitHub-hosted Runner、`persist-credentials:false`、只读 `GITHUB_TOKEN` 和每租户独立并发锁。不使用自托管 OCI 主机，不将 OCI 凭证写入仓库/数据库/永久文件。
+
+### 安全范围与限制
+
+1. `check` 仅调用 OCI 查询接口；`live` 是不同的显式审批路径。检查前不给 API IAM 用户创建权限是推荐做法。
+2. **同一租户**不同 compartment 在同一区域内的非终止 A1 实例会累加；必须显式列举额外 compartment。不会自动跨 OCI region 汇总，也不会自动遍历子 compartment。
+3. 不会停止、删除或调整现有实例；同名已有实例会阻止重复创建。
+4. 2 OCPU / 12GB 是每个 Environment 默认预算；不要未经验证就扩大预算。OCI 实际服务限额与免费权益应以租户 Console 为准。
+5. 每个 Environment 可以单独配置 TG，消息会注明租户**别名**，不要用真实账号标识作为公开别名。
+6. 当前没有自动 cron。真实定时任务必须在完成所有租户的只读校验、IAM 最小权限和安全审查后单独启用。
+
+下一步：先重跑 `dry-run`，再在 Environment 完整配置后执行单租户 `check`，最后检查 `all` 的隔离效果。
