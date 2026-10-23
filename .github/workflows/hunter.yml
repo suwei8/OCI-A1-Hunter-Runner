@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       mode:
-        description: "dry-run: offline; check: scoped read-only; audit: tenancy-wide read-only; live: approved"
+        description: "dry-run: offline; check: read-only; audit: tenancy inventory; preflight: launch config read-only; live: approved"
         type: choice
         required: true
         default: dry-run
@@ -12,14 +12,15 @@ on:
           - dry-run
           - check
           - audit
+          - preflight
           - live
       tenant:
-        description: "Registered Environment alias, or all (check only)"
+        description: "Registered Environment alias, or all (check/audit/preflight)"
         type: string
         required: true
         default: all
 
-# NO schedule. Only manual dry-run/check until each tenant has been audited.
+# NO schedule. Only manually selected modes. Live is independently double-gated.
 permissions:
   contents: read
 
@@ -38,7 +39,7 @@ jobs:
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
         with:
           repository: suwei8/OCI-A1-Hunter
-          ref: 8e5f3dc7437939b445e0f7c778838aac0aeb887f
+          ref: 919cde237f1f48d147f7f1791e34a14704c4c8f6
           token: ${{ secrets.PRIVATE_REPO_TOKEN }}
           persist-credentials: false
           path: hunter
@@ -124,7 +125,7 @@ jobs:
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
         with:
           repository: suwei8/OCI-A1-Hunter
-          ref: 8e5f3dc7437939b445e0f7c778838aac0aeb887f
+          ref: 919cde237f1f48d147f7f1791e34a14704c4c8f6
           token: ${{ secrets.PRIVATE_REPO_TOKEN }}
           persist-credentials: false
           path: hunter
@@ -134,13 +135,13 @@ jobs:
           .venv/bin/python -m pip install --disable-pip-version-check -c ./hunter/constraints.txt ./hunter
 
       - name: Block read-only check if not enabled
-        if: ${{ (inputs.mode == 'check' || inputs.mode == 'audit') && vars.OCI_HUNTER_READ_ONLY_ENABLED != 'true' }}
+        if: ${{ (inputs.mode == 'check' || inputs.mode == 'audit' || inputs.mode == 'preflight') && vars.OCI_HUNTER_READ_ONLY_ENABLED != 'true' }}
         run: |
           echo "Read-only OCI check disabled: OCI_HUNTER_READ_ONLY_ENABLED must equal true"
           exit 1
 
-      - name: Read-only OCI check or tenant audit
-        if: ${{ (inputs.mode == 'check' || inputs.mode == 'audit') && vars.OCI_HUNTER_READ_ONLY_ENABLED == 'true' }}
+      - name: Read-only OCI diagnostic (check/audit/preflight)
+        if: ${{ (inputs.mode == 'check' || inputs.mode == 'audit' || inputs.mode == 'preflight') && vars.OCI_HUNTER_READ_ONLY_ENABLED == 'true' }}
         env:
           OCI_HUNTER_MULTI_TENANT: "true"
           OCI_TENANT_ALIAS: ${{ matrix.tenant }}
@@ -153,6 +154,10 @@ jobs:
           OCI_A1_BUDGET_OCPUS: ${{ vars.OCI_A1_BUDGET_OCPUS }}
           OCI_A1_BUDGET_MEMORY_GB: ${{ vars.OCI_A1_BUDGET_MEMORY_GB }}
           OCI_AD_NAMES: ${{ vars.OCI_AD_NAMES }}
+          # Environment Secrets avoid revealing actual OCIDs in public job logs.
+          OCI_SUBNET_OCID: ${{ secrets.OCI_SUBNET_OCID }}
+          OCI_IMAGE_OCID: ${{ secrets.OCI_IMAGE_OCID }}
+          OCI_SSH_PUBLIC_KEY: ${{ secrets.OCI_SSH_PUBLIC_KEY }}
           OCI_TENANCY_OCID: ${{ secrets.tenancy }}
           OCI_USER_OCID: ${{ secrets.user }}
           OCI_FINGERPRINT: ${{ secrets.fingerprint }}
@@ -163,6 +168,7 @@ jobs:
           case "$OCI_HUNTER_EXECUTION_MODE" in
             check) .venv/bin/oci-a1-hunter --check ;;
             audit) .venv/bin/oci-a1-hunter --audit ;;
+            preflight) .venv/bin/oci-a1-hunter --preflight ;;
             *) echo "Unsupported read-only mode"; exit 1 ;;
           esac
 
@@ -181,9 +187,9 @@ jobs:
           OCI_HUNTER_TENANT_LIVE_APPROVED: "true"
           OCI_REGION: ${{ secrets.REGION }}
           OCI_COMPARTMENT_OCID: ${{ vars.OCI_COMPARTMENT_OCID }}
-          OCI_SUBNET_OCID: ${{ vars.OCI_SUBNET_OCID }}
-          OCI_IMAGE_OCID: ${{ vars.OCI_IMAGE_OCID }}
-          OCI_SSH_PUBLIC_KEY: ${{ vars.OCI_SSH_PUBLIC_KEY }}
+          OCI_SUBNET_OCID: ${{ secrets.OCI_SUBNET_OCID }}
+          OCI_IMAGE_OCID: ${{ secrets.OCI_IMAGE_OCID }}
+          OCI_SSH_PUBLIC_KEY: ${{ secrets.OCI_SSH_PUBLIC_KEY }}
           OCI_INSTANCE_NAME: ${{ vars.OCI_INSTANCE_NAME }}
           OCI_GUARD_COMPARTMENT_OCIDS: ${{ vars.OCI_GUARD_COMPARTMENT_OCIDS }}
           OCI_A1_BUDGET_OCPUS: ${{ vars.OCI_A1_BUDGET_OCPUS }}
