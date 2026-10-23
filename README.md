@@ -26,7 +26,7 @@
 | Repository Variable | `OCI_HUNTER_READ_ONLY_ENABLED` | `true` 后才允许执行 `check` |
 | Repository Variable | `OCI_HUNTER_LIVE_ENABLED` | **暂不设置为 true**（仅在明确批准实际创建时） |
 
-`OCI_TENANTS` 只包含与 OCI 账号对应的**匿名别名**，不要放 OCID、私钥、邮箱、密码。别名可以使用 `ap-singapore-2-8` 这样“区域+账号序号”的格式。使用 3–48 位小写英文字母、数字和连字符，必须以字母开头、以字母或数字结尾，不能是保留字 `all`，最多 20 个。原有 `oci-main` / `oci-backup` 也继续支持。它们必须与下面的 GitHub Environment 名称**完全一致**。**别名只是标识，不会自动设置实际 OCI 区域**；仍需在每个 Environment 的 `OCI_REGION` 填入正确的 Region ID。
+`OCI_TENANTS` 只包含与 OCI 账号对应的**匿名别名**，不要放 OCID、私钥、邮箱、密码。别名可以使用 `ap-singapore-2-8` 这样“区域+账号序号”的格式。使用 3–48 位小写英文字母、数字和连字符，必须以字母开头、以字母或数字结尾，不能是保留字 `all`，最多 20 个。原有 `oci-main` / `oci-backup` 也继续支持。它们必须与下面的 GitHub Environment 名称**完全一致**。**别名只是标识，不会自动设置实际 OCI 区域**；仍需在每个 Environment 的 `REGION` 填入正确的 Region ID。
 
 ### 2. 每个租户创建独立的 GitHub Environment
 
@@ -41,17 +41,17 @@
 
 | Environment Secret | 用途 |
 |---|---|
-| `OCI_TENANCY_OCID` | 当前租户 Tenancy OCID |
-| `OCI_USER_OCID` | 当前租户专用 IAM User |
-| `OCI_FINGERPRINT` | 当前租户 API Key 指纹 |
+| `TENANCY` | 当前租户 Tenancy OCID（对应 OCI 官方 `tenancy`） |
+| `USER` | 当前租户 API User OCID（对应 OCI 官方 `user`） |
+| `FINGERPRINT` | 当前租户 API Key 指纹（对应 OCI 官方 `fingerprint`） |
 | `OCI_PRIVATE_KEY` | 当前租户 OCI API 私钥 PEM |
 
 分别配置下面的 **Environment Variables**：
 
 | Environment Variable | 用途 |
 |---|---|
-| `OCI_REGION` | 必填，例如 `ap-singapore-2` 或 `ap-tokyo-1`（按实际租户设置） |
-| `OCI_COMPARTMENT_OCID` | 可选，仅当实例位于子 Compartment 时设置；默认使用 `OCI_TENANCY_OCID`（根 Compartment） |
+| `REGION` | 必填，例如 `ap-singapore-2` 或 `ap-tokyo-1`（按实际租户设置） |
+| `OCI_COMPARTMENT_OCID` | 可选，仅当实例位于子 Compartment 时设置；默认使用 `TENANCY`（根 Compartment） |
 | `OCI_GUARD_COMPARTMENT_OCIDS` | 可选，额外需要统计的 compartment OCID，逗号分隔 |
 | `OCI_INSTANCE_NAME` | 可选，默认 `oci-a1-hunter` |
 | `OCI_AD_NAMES` | 可选，限制 AD 名称 |
@@ -62,7 +62,7 @@
 `OCI_SUBNET_OCID`, `OCI_IMAGE_OCID`, `OCI_SSH_PUBLIC_KEY`, `OCI_TENANT_LIVE_APPROVED=true`；
 同时还需要上面的 Repository `OCI_HUNTER_LIVE_ENABLED=true`。当前不要开启。
 
-**迁移提醒**：若此前把 `OCI_PRIVATE_KEY`、`OCI_USER_OCID` 等 OCI 凭证配置在 Repository Secrets，请在确认所有 Environment 已独立配置后**移除 Repository 级 OCI Secrets**。GitHub Secrets 存在作用域回退，防止错误回退是多租户隔离的重要一环；每个租户 Job 必须提供自己的 `OCI_TENANCY_OCID`，项目不再要求填写重复的身份标识。
+**迁移提醒**：Public 工作流现已统一读取每个 Environment 的 `USER`、`FINGERPRINT`、`TENANCY`、`OCI_PRIVATE_KEY` 及 `REGION`。此前使用的 `OCI_USER_OCID`、`OCI_FINGERPRINT`、`OCI_TENANCY_OCID`、`OCI_REGION` 是旧配置名，应迁移后删除，避免重复和混淆。尤其不要在 Repository Secrets 设置共享的 OCI 租户凭证。
 
 ### 3. 手动测试
 
@@ -93,10 +93,10 @@
 
 | OCI 官方配置 | GitHub Actions 配置 | 存放位置 |
 |---|---|---|
-| `user` | `OCI_USER_OCID` | Environment Secret |
-| `fingerprint` | `OCI_FINGERPRINT` | Environment Secret |
-| `tenancy` | `OCI_TENANCY_OCID` | Environment Secret |
-| `region` | `OCI_REGION` | Environment Variable |
-| `key_file` | `OCI_PRIVATE_KEY`（PEM 文件内容） | Environment Secret |
+| `user` | `USER` | Environment Secret |
+| `fingerprint` | `FINGERPRINT` | Environment Secret |
+| `tenancy` | `TENANCY` | Environment Secret |
+| `region` | `REGION` | Environment Variable |
+| `key_file` | `OCI_PRIVATE_KEY`（PEM 私钥全文，不是路径） | Environment Secret |
 
-默认使用 `OCI_TENANCY_OCID` 作为根 Compartment ID；不用额外创建重复的 `OCI_TENANT_EXPECTED_OCID` 变量，也不要求独立的 Compartment OCID。OCI SDK 使用内存中的 `key_content`，不把私钥写入文件。
+配置 OCI API 只需上述 **4 个 Environment Secrets + 1 个 Environment Variable**。GitHub 会将 Secrets/Variables 名称显示为大写，但引用不区分大小写。工作流将这些短名称映射为 Private Python 核心所需的内部环境变量。默认使用 `TENANCY` 作为根 Compartment ID；不要求额外 Compartment OCID。OCI SDK 使用内存中的 `key_content`，不把私钥写入文件。
