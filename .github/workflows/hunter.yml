@@ -37,7 +37,7 @@ jobs:
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
         with:
           repository: suwei8/OCI-A1-Hunter
-          ref: d254d90f515c1764c7b9b67cac59da01e81150bd
+          ref: 066782ab8615ebca55884fd5938cba99a39e1ff6
           token: ${{ secrets.PRIVATE_REPO_TOKEN }}
           persist-credentials: false
           path: hunter
@@ -121,7 +121,7 @@ jobs:
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
         with:
           repository: suwei8/OCI-A1-Hunter
-          ref: d254d90f515c1764c7b9b67cac59da01e81150bd
+          ref: 066782ab8615ebca55884fd5938cba99a39e1ff6
           token: ${{ secrets.PRIVATE_REPO_TOKEN }}
           persist-credentials: false
           path: hunter
@@ -141,7 +141,6 @@ jobs:
         env:
           OCI_HUNTER_MULTI_TENANT: "true"
           OCI_TENANT_ALIAS: ${{ matrix.tenant }}
-          OCI_TENANT_EXPECTED_OCID: ${{ vars.OCI_TENANT_EXPECTED_OCID }}
           OCI_HUNTER_READ_ONLY_ENABLED: "true"
           OCI_REGION: ${{ vars.OCI_REGION }}
           OCI_COMPARTMENT_OCID: ${{ vars.OCI_COMPARTMENT_OCID }}
@@ -169,7 +168,6 @@ jobs:
         env:
           OCI_HUNTER_MULTI_TENANT: "true"
           OCI_TENANT_ALIAS: ${{ matrix.tenant }}
-          OCI_TENANT_EXPECTED_OCID: ${{ vars.OCI_TENANT_EXPECTED_OCID }}
           OCI_HUNTER_LIVE_ENABLED: "true"
           OCI_HUNTER_TENANT_LIVE_APPROVED: "true"
           OCI_REGION: ${{ vars.OCI_REGION }}
