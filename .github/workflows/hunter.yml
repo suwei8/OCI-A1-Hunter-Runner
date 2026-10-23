@@ -37,14 +37,16 @@ jobs:
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
         with:
           repository: suwei8/OCI-A1-Hunter
-          ref: 066782ab8615ebca55884fd5938cba99a39e1ff6
+          ref: 6332dc47f22f384ce12125dc63506a4b2f4e284e
           token: ${{ secrets.PRIVATE_REPO_TOKEN }}
           persist-credentials: false
           path: hunter
-      - name: Install Private Python project
+      - name: Install Private Python project and tests
         run: |
           python3 -m venv .venv
-          .venv/bin/python -m pip install --disable-pip-version-check -c ./hunter/constraints.txt ./hunter
+          .venv/bin/python -m pip install --disable-pip-version-check -c ./hunter/constraints.txt './hunter[test]'
+      - name: Run private core regression tests (offline)
+        run: .venv/bin/python -m pytest -q ./hunter/tests
       - name: Offline dry-run (no OCI secrets)
         run: .venv/bin/oci-a1-hunter --dry-run
 
@@ -121,7 +123,7 @@ jobs:
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
         with:
           repository: suwei8/OCI-A1-Hunter
-          ref: 066782ab8615ebca55884fd5938cba99a39e1ff6
+          ref: 6332dc47f22f384ce12125dc63506a4b2f4e284e
           token: ${{ secrets.PRIVATE_REPO_TOKEN }}
           persist-credentials: false
           path: hunter
