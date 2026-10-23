@@ -142,16 +142,16 @@ jobs:
           OCI_HUNTER_MULTI_TENANT: "true"
           OCI_TENANT_ALIAS: ${{ matrix.tenant }}
           OCI_HUNTER_READ_ONLY_ENABLED: "true"
-          OCI_REGION: ${{ vars.OCI_REGION }}
+          OCI_REGION: ${{ vars.region }}
           OCI_COMPARTMENT_OCID: ${{ vars.OCI_COMPARTMENT_OCID }}
           OCI_INSTANCE_NAME: ${{ vars.OCI_INSTANCE_NAME }}
           OCI_GUARD_COMPARTMENT_OCIDS: ${{ vars.OCI_GUARD_COMPARTMENT_OCIDS }}
           OCI_A1_BUDGET_OCPUS: ${{ vars.OCI_A1_BUDGET_OCPUS }}
           OCI_A1_BUDGET_MEMORY_GB: ${{ vars.OCI_A1_BUDGET_MEMORY_GB }}
           OCI_AD_NAMES: ${{ vars.OCI_AD_NAMES }}
-          OCI_TENANCY_OCID: ${{ secrets.OCI_TENANCY_OCID }}
-          OCI_USER_OCID: ${{ secrets.OCI_USER_OCID }}
-          OCI_FINGERPRINT: ${{ secrets.OCI_FINGERPRINT }}
+          OCI_TENANCY_OCID: ${{ secrets.tenancy }}
+          OCI_USER_OCID: ${{ secrets.user }}
+          OCI_FINGERPRINT: ${{ secrets.fingerprint }}
           OCI_PRIVATE_KEY: ${{ secrets.OCI_PRIVATE_KEY }}
           TG_BOT_TOKEN: ${{ secrets.TG_BOT_TOKEN }}
           TG_CHAT_ID: ${{ secrets.TG_CHAT_ID }}
@@ -170,7 +170,7 @@ jobs:
           OCI_TENANT_ALIAS: ${{ matrix.tenant }}
           OCI_HUNTER_LIVE_ENABLED: "true"
           OCI_HUNTER_TENANT_LIVE_APPROVED: "true"
-          OCI_REGION: ${{ vars.OCI_REGION }}
+          OCI_REGION: ${{ vars.region }}
           OCI_COMPARTMENT_OCID: ${{ vars.OCI_COMPARTMENT_OCID }}
           OCI_SUBNET_OCID: ${{ vars.OCI_SUBNET_OCID }}
           OCI_IMAGE_OCID: ${{ vars.OCI_IMAGE_OCID }}
@@ -180,9 +180,9 @@ jobs:
           OCI_A1_BUDGET_OCPUS: ${{ vars.OCI_A1_BUDGET_OCPUS }}
           OCI_A1_BUDGET_MEMORY_GB: ${{ vars.OCI_A1_BUDGET_MEMORY_GB }}
           OCI_AD_NAMES: ${{ vars.OCI_AD_NAMES }}
-          OCI_TENANCY_OCID: ${{ secrets.OCI_TENANCY_OCID }}
-          OCI_USER_OCID: ${{ secrets.OCI_USER_OCID }}
-          OCI_FINGERPRINT: ${{ secrets.OCI_FINGERPRINT }}
+          OCI_TENANCY_OCID: ${{ secrets.tenancy }}
+          OCI_USER_OCID: ${{ secrets.user }}
+          OCI_FINGERPRINT: ${{ secrets.fingerprint }}
           OCI_PRIVATE_KEY: ${{ secrets.OCI_PRIVATE_KEY }}
           TG_BOT_TOKEN: ${{ secrets.TG_BOT_TOKEN }}
           TG_CHAT_ID: ${{ secrets.TG_CHAT_ID }}
