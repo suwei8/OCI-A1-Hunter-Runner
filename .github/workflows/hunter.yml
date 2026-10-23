@@ -37,7 +37,7 @@ jobs:
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
         with:
           repository: suwei8/OCI-A1-Hunter
-          ref: 6332dc47f22f384ce12125dc63506a4b2f4e284e
+          ref: 9f34060ac0e159d2d6acdbc193d435a40eee05d2
           token: ${{ secrets.PRIVATE_REPO_TOKEN }}
           persist-credentials: false
           path: hunter
@@ -123,7 +123,7 @@ jobs:
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
         with:
           repository: suwei8/OCI-A1-Hunter
-          ref: 6332dc47f22f384ce12125dc63506a4b2f4e284e
+          ref: 9f34060ac0e159d2d6acdbc193d435a40eee05d2
           token: ${{ secrets.PRIVATE_REPO_TOKEN }}
           persist-credentials: false
           path: hunter
