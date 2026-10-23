@@ -3,11 +3,15 @@ name: OCI A1 Hunter (manual safe mode)
 on:
   workflow_dispatch:
     inputs:
-      live:
-        description: "Actually call OCI? Keep false until explicitly activated"
-        type: boolean
+      mode:
+        description: "dry-run never calls OCI; check only reads OCI; live requires explicit enablement"
+        type: choice
         required: true
-        default: false
+        default: dry-run
+        options:
+          - dry-run
+          - check
+          - live
 
 # Intentionally NO schedule until credentials, permissions and dry-run have been reviewed.
 permissions:
@@ -32,7 +36,7 @@ jobs:
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
         with:
           repository: suwei8/OCI-A1-Hunter
-          ref: 4b23c85cc21ec2931d1364c055aaf2088f6efda0
+          ref: 89ebd65c2f70790b9cf6267efb65884cc2912043
           token: ${{ secrets.PRIVATE_REPO_TOKEN }}
           persist-credentials: false
           path: hunter
@@ -43,17 +47,42 @@ jobs:
           .venv/bin/python -m pip install --disable-pip-version-check -c ./hunter/constraints.txt ./hunter
 
       - name: Dry run without OCI credentials
-        if: ${{ !inputs.live }}
+        if: ${{ inputs.mode == 'dry-run' }}
         run: .venv/bin/oci-a1-hunter --dry-run
 
+      - name: Block unauthorized read-only OCI check
+        if: ${{ inputs.mode == 'check' && vars.OCI_HUNTER_READ_ONLY_ENABLED != 'true' }}
+        run: |
+          echo "Read-only OCI check blocked; set repository variable OCI_HUNTER_READ_ONLY_ENABLED=true first."
+          exit 1
+
+      - name: OCI read-only check (no instance launch)
+        if: ${{ inputs.mode == 'check' && vars.OCI_HUNTER_READ_ONLY_ENABLED == 'true' }}
+        env:
+          OCI_HUNTER_READ_ONLY_ENABLED: "true"
+          OCI_REGION: ${{ vars.OCI_REGION }}
+          OCI_COMPARTMENT_OCID: ${{ vars.OCI_COMPARTMENT_OCID }}
+          OCI_INSTANCE_NAME: ${{ vars.OCI_INSTANCE_NAME }}
+          OCI_GUARD_COMPARTMENT_OCIDS: ${{ vars.OCI_GUARD_COMPARTMENT_OCIDS }}
+          OCI_A1_BUDGET_OCPUS: ${{ vars.OCI_A1_BUDGET_OCPUS }}
+          OCI_A1_BUDGET_MEMORY_GB: ${{ vars.OCI_A1_BUDGET_MEMORY_GB }}
+          OCI_AD_NAMES: ${{ vars.OCI_AD_NAMES }}
+          OCI_TENANCY_OCID: ${{ secrets.OCI_TENANCY_OCID }}
+          OCI_USER_OCID: ${{ secrets.OCI_USER_OCID }}
+          OCI_FINGERPRINT: ${{ secrets.OCI_FINGERPRINT }}
+          OCI_PRIVATE_KEY: ${{ secrets.OCI_PRIVATE_KEY }}
+          TG_BOT_TOKEN: ${{ secrets.TG_BOT_TOKEN }}
+          TG_CHAT_ID: ${{ secrets.TG_CHAT_ID }}
+        run: .venv/bin/oci-a1-hunter --check
+
       - name: Block unauthorized live request
-        if: ${{ inputs.live && vars.OCI_HUNTER_LIVE_ENABLED != 'true' }}
+        if: ${{ inputs.mode == 'live' && vars.OCI_HUNTER_LIVE_ENABLED != 'true' }}
         run: |
           echo "Live execution blocked; repository variable OCI_HUNTER_LIVE_ENABLED must be true."
           exit 1
 
       - name: Live run (explicit opt-in only)
-        if: ${{ inputs.live && vars.OCI_HUNTER_LIVE_ENABLED == 'true' }}
+        if: ${{ inputs.mode == 'live' && vars.OCI_HUNTER_LIVE_ENABLED == 'true' }}
         env:
           OCI_HUNTER_LIVE_ENABLED: "true"
           OCI_REGION: ${{ vars.OCI_REGION }}
