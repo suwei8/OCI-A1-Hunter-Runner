@@ -37,7 +37,7 @@ jobs:
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
         with:
           repository: suwei8/OCI-A1-Hunter
-          ref: 0d1eeccd820dece319ba10c90ee5aaa7df1f8c85
+          ref: d254d90f515c1764c7b9b67cac59da01e81150bd
           token: ${{ secrets.PRIVATE_REPO_TOKEN }}
           persist-credentials: false
           path: hunter
@@ -78,9 +78,9 @@ jobs:
               raise SystemExit("OCI_TENANTS must be a valid JSON array")
           if not isinstance(registered, list) or not 1 <= len(registered) <= 20:
               raise SystemExit("OCI_TENANTS must contain 1 to 20 names")
-          valid = re.compile(r"oci-[a-z0-9][a-z0-9-]{0,39}\Z")
-          if any(not isinstance(name, str) or not valid.fullmatch(name) for name in registered):
-              raise SystemExit("Invalid tenant alias: use oci- followed by lowercase letters, numbers or hyphens")
+          valid = re.compile(r"[a-z][a-z0-9-]{1,46}[a-z0-9]\Z")
+          if any(not isinstance(name, str) or name == "all" or not valid.fullmatch(name) for name in registered):
+              raise SystemExit("Invalid tenant alias: use 3-48 lowercase letters, digits or hyphens; do not use all")
           if len(registered) != len(set(registered)):
               raise SystemExit("Duplicate OCI_TENANTS aliases are forbidden")
           requested = os.environ["REQUESTED_TENANT"]
@@ -121,7 +121,7 @@ jobs:
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
         with:
           repository: suwei8/OCI-A1-Hunter
-          ref: 0d1eeccd820dece319ba10c90ee5aaa7df1f8c85
+          ref: d254d90f515c1764c7b9b67cac59da01e81150bd
           token: ${{ secrets.PRIVATE_REPO_TOKEN }}
           persist-credentials: false
           path: hunter
