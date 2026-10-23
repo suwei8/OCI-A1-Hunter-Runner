@@ -70,13 +70,15 @@
 
 | mode | tenant | 作用 |
 |---|---|---|
-| `dry-run` | `all`（忽略此输入） | 离线验证安装与 Python CLI，不接触 OCI |
+| `dry-run` | `all`（忽略此输入） | 离线运行 Private Python 单元测试并验证 CLI，不接触 OCI |
 | `check` | `ap-singapore-2-8` | 只读验证主租户 OCI 凭证与现有 A1 用量 |
 | `check` | `all` | 按 `OCI_TENANTS` 自动生成独立查询 Job，分别报告 |
 | `live` | `ap-singapore-2-8` | **可能创建实例**，受两级开关保护 |
 | `live` | `all` | **拒绝执行**；禁止跨全部租户一键创建 |
 
 工作流使用固定的 Private commit、GitHub-hosted Runner、`persist-credentials:false`、只读 `GITHUB_TOKEN` 和每租户独立并发锁。不使用自托管 OCI 主机，不将 OCI 凭证写入仓库/数据库/永久文件。
+
+`check` 如失败，新版核心会给出安全的阶段性原因（`OCI client initialization` / `OCI availability-domain query` / `OCI instances query`），并分类为 DNS、TCP 连接、TLS、连接超时、读取超时或 OCI HTTP 状态。该模式单次请求连接超时 5 秒、读取超时 20 秒，不打印原始请求异常、Endpoint 或 OCI 身份信息。`REGION` 仍为每个 Environment 原有的 Secret，**不需要修改或新增任何一个 OCI Secret**。建议先运行 `dry-run` 让离线测试通过，再运行单租户 `check` 查看诊断结果。
 
 ### 安全范围与限制
 
