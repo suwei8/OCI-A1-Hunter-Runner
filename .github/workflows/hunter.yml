@@ -22,18 +22,18 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 12
     steps:
-      - name: Require private source deploy key
+      - name: Require fine-grained private repository token
         env:
-          DEPLOY_KEY: ${{ secrets.PRIVATE_REPO_SSH_KEY }}
+          REPO_TOKEN: ${{ secrets.PRIVATE_REPO_TOKEN }}
         run: |
-          test -n "$DEPLOY_KEY" || { echo "Configure PRIVATE_REPO_SSH_KEY first"; exit 1; }
+          test -n "$REPO_TOKEN" || { echo "Configure PRIVATE_REPO_TOKEN first"; exit 1; }
 
       - name: Checkout audited private source
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
         with:
           repository: suwei8/OCI-A1-Hunter
           ref: 2d7a8a699f9ffe0f17b4d62444a41cbdbd6e258b
-          ssh-key: ${{ secrets.PRIVATE_REPO_SSH_KEY }}
+          token: ${{ secrets.PRIVATE_REPO_TOKEN }}
           persist-credentials: false
           path: hunter
 
