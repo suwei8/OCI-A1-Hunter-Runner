@@ -1,0 +1,71 @@
+name: OCI A1 Hunter (manual safe mode)
+
+on:
+  workflow_dispatch:
+    inputs:
+      live:
+        description: "Actually call OCI? Keep false until explicitly activated"
+        type: boolean
+        required: true
+        default: false
+
+# Intentionally NO schedule until credentials, permissions and dry-run have been reviewed.
+permissions:
+  contents: read
+
+concurrency:
+  group: oci-a1-hunter-production
+  cancel-in-progress: false
+
+jobs:
+  hunter:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    steps:
+      - name: Require private source deploy key
+        env:
+          DEPLOY_KEY: ${{ secrets.PRIVATE_REPO_SSH_KEY }}
+        run: |
+          test -n "$DEPLOY_KEY" || { echo "Configure PRIVATE_REPO_SSH_KEY first"; exit 1; }
+
+      - name: Checkout audited private source
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          repository: suwei8/OCI-A1-Hunter
+          ref: 2d7a8a699f9ffe0f17b4d62444a41cbdbd6e258b
+          ssh-key: ${{ secrets.PRIVATE_REPO_SSH_KEY }}
+          persist-credentials: false
+          path: hunter
+
+      - name: Install Python project
+        run: |
+          python3 -m venv .venv
+          .venv/bin/python -m pip install --disable-pip-version-check ./hunter
+
+      - name: Run safe hunter
+        env:
+          LIVE_REQUESTED: ${{ inputs.live }}
+          OCI_HUNTER_LIVE_ENABLED: ${{ vars.OCI_HUNTER_LIVE_ENABLED }}
+          OCI_REGION: ${{ vars.OCI_REGION }}
+          OCI_COMPARTMENT_OCID: ${{ vars.OCI_COMPARTMENT_OCID }}
+          OCI_SUBNET_OCID: ${{ vars.OCI_SUBNET_OCID }}
+          OCI_IMAGE_OCID: ${{ vars.OCI_IMAGE_OCID }}
+          OCI_SSH_PUBLIC_KEY: ${{ vars.OCI_SSH_PUBLIC_KEY }}
+          OCI_INSTANCE_NAME: ${{ vars.OCI_INSTANCE_NAME }}
+          OCI_AD_NAMES: ${{ vars.OCI_AD_NAMES }}
+          OCI_TENANCY_OCID: ${{ secrets.OCI_TENANCY_OCID }}
+          OCI_USER_OCID: ${{ secrets.OCI_USER_OCID }}
+          OCI_FINGERPRINT: ${{ secrets.OCI_FINGERPRINT }}
+          OCI_PRIVATE_KEY: ${{ secrets.OCI_PRIVATE_KEY }}
+          TG_BOT_TOKEN: ${{ secrets.TG_BOT_TOKEN }}
+          TG_CHAT_ID: ${{ secrets.TG_CHAT_ID }}
+        run: |
+          if [ "$LIVE_REQUESTED" = "true" ]; then
+            if [ "$OCI_HUNTER_LIVE_ENABLED" != "true" ]; then
+              echo "Live execution blocked; set the approved repository variable to true first."
+              exit 1
+            fi
+            .venv/bin/oci-a1-hunter --live
+          else
+            .venv/bin/oci-a1-hunter --dry-run
+          fi
