@@ -32,7 +32,7 @@ jobs:
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
         with:
           repository: suwei8/OCI-A1-Hunter
-          ref: 2d7a8a699f9ffe0f17b4d62444a41cbdbd6e258b
+          ref: 4b23c85cc21ec2931d1364c055aaf2088f6efda0
           token: ${{ secrets.PRIVATE_REPO_TOKEN }}
           persist-credentials: false
           path: hunter
@@ -40,7 +40,7 @@ jobs:
       - name: Install Python project
         run: |
           python3 -m venv .venv
-          .venv/bin/python -m pip install --disable-pip-version-check ./hunter
+          .venv/bin/python -m pip install --disable-pip-version-check -c ./hunter/constraints.txt ./hunter
 
       - name: Dry run without OCI credentials
         if: ${{ !inputs.live }}
@@ -62,6 +62,9 @@ jobs:
           OCI_IMAGE_OCID: ${{ vars.OCI_IMAGE_OCID }}
           OCI_SSH_PUBLIC_KEY: ${{ vars.OCI_SSH_PUBLIC_KEY }}
           OCI_INSTANCE_NAME: ${{ vars.OCI_INSTANCE_NAME }}
+          OCI_GUARD_COMPARTMENT_OCIDS: ${{ vars.OCI_GUARD_COMPARTMENT_OCIDS }}
+          OCI_A1_BUDGET_OCPUS: ${{ vars.OCI_A1_BUDGET_OCPUS }}
+          OCI_A1_BUDGET_MEMORY_GB: ${{ vars.OCI_A1_BUDGET_MEMORY_GB }}
           OCI_AD_NAMES: ${{ vars.OCI_AD_NAMES }}
           OCI_TENANCY_OCID: ${{ secrets.OCI_TENANCY_OCID }}
           OCI_USER_OCID: ${{ secrets.OCI_USER_OCID }}
