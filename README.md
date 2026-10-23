@@ -9,7 +9,7 @@
 - Public Repository：工作流、租户别名清单、唯一共享的 Private 源码只读凭证 `PRIVATE_REPO_TOKEN`。
 - Private Repository：固定 SHA 的 Python OCI 核心；不包含真实 OCI 凭证。
 - GitHub Environment：**每个 OCI Tenancy 一个独立 Environment**（例如 `ap-singapore-2-8` / `ap-singapore-2-9`），拥有独立的 OCI API Secrets、可选配额配置；Telegram Bot 由 Repository Secrets 统一管理。
-- `check`（快速检查）及 `audit`（递归租户 Compartment 审计）均可选择单个租户或 `all`；独立矩阵 Job 执行（最多同时 2 个，失败互不取消）。
+- `check`（快速检查）、`audit`（递归租户 Compartment 审计）和 `preflight`（正式启动配置只读预检）均可选择单个租户或 `all`；独立矩阵 Job 执行（最多同时 2 个，失败互不取消）。
 - `live` 强制选单个租户；同时需要全局 + 单租户的人工开关。默认均关闭。
 - 账号之间不共享 OCI 私钥；每个任务都在临时 GitHub-hosted Runner 中执行。不能承诺绝对保密：拥有 Public 工作流写权限的人仍有机会修改代码窃取其可访问的 Secrets，因此应限制写权限并设置 Environment 审批保护。部署作业引用对应 Environment；普通 `dry-run` 完全不引用任何 Environment。
 
@@ -23,7 +23,7 @@
 | Repository Secret | `TG_BOT_TOKEN` | 共享的 Telegram Bot Token（可选） |
 | Repository Secret | `TG_CHAT_ID` | 共享的 Telegram Chat ID（可选） |
 | Repository Variable | `OCI_TENANTS` | JSON 字符串，如 `["ap-singapore-2-8","ap-singapore-2-9"]` |
-| Repository Variable | `OCI_HUNTER_READ_ONLY_ENABLED` | `true` 后才允许执行 `check` 或 `audit` |
+| Repository Variable | `OCI_HUNTER_READ_ONLY_ENABLED` | `true` 后才允许执行 `check`、`audit` 或 `preflight` |
 | Repository Variable | `OCI_HUNTER_LIVE_ENABLED` | **暂不设置为 true**（仅在明确批准实际创建时） |
 
 `OCI_TENANTS` 只包含与 OCI 账号对应的**匿名别名**，不要放 OCID、私钥、邮箱、密码。别名可以使用 `ap-singapore-2-8` 这样“区域+账号序号”的格式。使用 3–48 位小写英文字母、数字和连字符，必须以字母开头、以字母或数字结尾，不能是保留字 `all`，最多 20 个。原有 `oci-main` / `oci-backup` 也继续支持。它们必须与下面的 GitHub Environment 名称**完全一致**。**别名只是标识，不会自动设置实际 OCI 区域**；仍需在每个 Environment Secret `REGION` 填入正确的 Region ID。
@@ -58,9 +58,17 @@
 | `OCI_A1_BUDGET_OCPUS` | 可选，每租户默认 **2** |
 | `OCI_A1_BUDGET_MEMORY_GB` | 可选，每租户默认 **12** |
 
-未来需要 `live` 时，**在对应 Environment** 另加：
-`OCI_SUBNET_OCID`, `OCI_IMAGE_OCID`, `OCI_SSH_PUBLIC_KEY`, `OCI_TENANT_LIVE_APPROVED=true`；
-同时还需要上面的 Repository `OCI_HUNTER_LIVE_ENABLED=true`。当前不要开启。
+若要运行只读 `preflight`，**在对应 Environment 的 Secrets（而非 Variables）** 额外添加：
+
+| Environment Secret | 用途 |
+|---|---|
+| `OCI_SUBNET_OCID` | 目标 Subnet OCID（仅作只读 GetSubnet 检查） |
+| `OCI_IMAGE_OCID` | 目标 Image OCID（仅作只读 GetImage/ListShapes 检查） |
+| `OCI_SSH_PUBLIC_KEY` | 登录云主机用的 **SSH 公钥**（不是私钥）；仅作格式检查 |
+
+上述 3 项用 Secrets 存放，是因为公开 Actions Job 日志可能显示普通 Variables 的值；这不会影响已成功验证的 5 个身份 Secrets。`check`、`audit`、`dry-run` 均不需要新增配置。如果未填写，`preflight` 会明确报告缺少哪些字段并安全退出，绝不创建实例。
+
+未来若明确批准 `live`，再在对应 Environment **Variable** 中设置 `OCI_TENANT_LIVE_APPROVED=true`，并同时要求 Repository Variable `OCI_HUNTER_LIVE_ENABLED=true`。**现在两者都不要启用。**
 
 **迁移提醒**：Public 工作流现已统一读取每个 Environment 的 `USER`、`FINGERPRINT`、`TENANCY`、`OCI_PRIVATE_KEY` 及 `REGION`。此前使用的 `OCI_USER_OCID`、`OCI_FINGERPRINT`、`OCI_TENANCY_OCID`、`OCI_REGION` 是旧配置名，应迁移后删除，避免重复和混淆。尤其不要在 Repository Secrets 设置共享的 OCI 租户凭证。
 
@@ -74,13 +82,15 @@
 | `check` | `ap-singapore-2-8` | 只读验证主租户 OCI 凭证与现有 A1 用量 |
 | `check` | `all` | 按 `OCI_TENANTS` 自动生成独立快速查询 Job，分别报告 |
 | `audit` | `ap-singapore-2-8` | **只读遍历整个 Tenancy 的子 Compartment**，统计当前 Region 的所有可查询 A1 实例 |
-| `audit` | `all` | 对已登记的每个租户单独进行全树审计，权限不足即报错，不创建实例 |
+| `audit` | `all` | 对已登记的每个租户单独进行可查询 Compartment 审计，不创建实例 |
+| `preflight` | `all` | 用每个租户独立的 Environment Secrets，只读验证子网、镜像、SSH 公钥、A1 形状兼容性以及当前区域 A1 用量；缺配置则安全失败 |
+| `preflight` | `ap-singapore-2-8` | 只诊断单个租户；不调用创建实例 API |
 | `live` | `ap-singapore-2-8` | **可能创建实例**，受两级开关保护 |
 | `live` | `all` | **拒绝执行**；禁止跨全部租户一键创建 |
 
 工作流使用固定的 Private commit、GitHub-hosted Runner、`persist-credentials:false`、只读 `GITHUB_TOKEN` 和每租户独立并发锁。不使用自托管 OCI 主机，不将 OCI 凭证写入仓库/数据库/永久文件。
 
-`check` / `audit` 如失败，新版核心会给出安全的阶段性原因（`OCI client initialization` / `OCI availability-domain query` / `OCI instances query`），并分类为 DNS、TCP 连接、TLS、连接超时、读取超时或 OCI HTTP 状态。该模式单次请求连接超时 5 秒、读取超时 20 秒，不打印原始请求异常、Endpoint 或 OCI 身份信息。`REGION` 仍为每个 Environment 原有的 Secret，**不需要修改或新增任何一个 OCI Secret**。建议先运行 `dry-run` 让离线测试通过，再运行 `audit` + `all` 核对整个租户树（仅使用已有 5 个 Secrets，无需增加 Compartment OCID）。
+`check` / `audit` / `preflight` 如失败，新版核心会给出安全的阶段性原因（`OCI client initialization` / `OCI availability-domain query` / `OCI instances query`），并分类为 DNS、TCP 连接、TLS、连接超时、读取超时或 OCI HTTP 状态。该模式单次请求连接超时 5 秒、读取超时 20 秒，不打印原始请求异常、Endpoint 或 OCI 身份信息。`REGION` 仍为每个 Environment 原有的 Secret，**不需要修改或新增任何一个 OCI Secret**。建议先运行 `dry-run` 让离线测试通过，再运行 `audit` + `all` 核对可查询的租户树（仅使用已有 5 个 Secrets，无需增加 Compartment OCID）。然后分别为拟正式创建的租户准备上面 3 个 Environment Secrets，运行 `preflight`（仍为只读）。
 
 ### 安全范围与限制
 
@@ -91,7 +101,7 @@
 5. TG Bot/Chat ID 在 Repository Secrets 中共享配置一份，消息会注明租户**别名**，不要用真实账号标识作为公开别名。
 6. 当前没有自动 cron。真实定时任务必须在完成所有租户的只读校验、IAM 最小权限和安全审查后单独启用。
 
-下一步：先运行 `dry-run`（离线单元测试），再运行 `audit` + `all`（两个租户分别审计）。审计通过且确认 IAM 权限和预算后，才讨论是否启用 `live`；本版本继续不开放定时自动创建。
+下一步：现有 `dry-run` 与 `audit` 已通过；请运行更新后的 `dry-run`（验证新单元测试），按需添加 3 个新的 Environment Secrets 后执行 `preflight`。只有预检通过、确认 IAM 权限和预算并单独授权后，才讨论 `live`；目前继续不开放定时自动创建。
 
 ### OCI 官方配置字段映射
 
