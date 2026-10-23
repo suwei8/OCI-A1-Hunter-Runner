@@ -42,10 +42,20 @@ jobs:
           python3 -m venv .venv
           .venv/bin/python -m pip install --disable-pip-version-check ./hunter
 
-      - name: Run safe hunter
+      - name: Dry run without OCI credentials
+        if: ${{ !inputs.live }}
+        run: .venv/bin/oci-a1-hunter --dry-run
+
+      - name: Block unauthorized live request
+        if: ${{ inputs.live && vars.OCI_HUNTER_LIVE_ENABLED != 'true' }}
+        run: |
+          echo "Live execution blocked; repository variable OCI_HUNTER_LIVE_ENABLED must be true."
+          exit 1
+
+      - name: Live run (explicit opt-in only)
+        if: ${{ inputs.live && vars.OCI_HUNTER_LIVE_ENABLED == 'true' }}
         env:
-          LIVE_REQUESTED: ${{ inputs.live }}
-          OCI_HUNTER_LIVE_ENABLED: ${{ vars.OCI_HUNTER_LIVE_ENABLED }}
+          OCI_HUNTER_LIVE_ENABLED: "true"
           OCI_REGION: ${{ vars.OCI_REGION }}
           OCI_COMPARTMENT_OCID: ${{ vars.OCI_COMPARTMENT_OCID }}
           OCI_SUBNET_OCID: ${{ vars.OCI_SUBNET_OCID }}
@@ -59,13 +69,4 @@ jobs:
           OCI_PRIVATE_KEY: ${{ secrets.OCI_PRIVATE_KEY }}
           TG_BOT_TOKEN: ${{ secrets.TG_BOT_TOKEN }}
           TG_CHAT_ID: ${{ secrets.TG_CHAT_ID }}
-        run: |
-          if [ "$LIVE_REQUESTED" = "true" ]; then
-            if [ "$OCI_HUNTER_LIVE_ENABLED" != "true" ]; then
-              echo "Live execution blocked; set the approved repository variable to true first."
-              exit 1
-            fi
-            .venv/bin/oci-a1-hunter --live
-          else
-            .venv/bin/oci-a1-hunter --dry-run
-          fi
+        run: .venv/bin/oci-a1-hunter --live
