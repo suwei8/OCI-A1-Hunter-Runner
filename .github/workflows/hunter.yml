@@ -142,7 +142,7 @@ jobs:
           OCI_HUNTER_MULTI_TENANT: "true"
           OCI_TENANT_ALIAS: ${{ matrix.tenant }}
           OCI_HUNTER_READ_ONLY_ENABLED: "true"
-          OCI_REGION: ${{ vars.region }}
+          OCI_REGION: ${{ secrets.REGION }}
           OCI_COMPARTMENT_OCID: ${{ vars.OCI_COMPARTMENT_OCID }}
           OCI_INSTANCE_NAME: ${{ vars.OCI_INSTANCE_NAME }}
           OCI_GUARD_COMPARTMENT_OCIDS: ${{ vars.OCI_GUARD_COMPARTMENT_OCIDS }}
@@ -170,7 +170,7 @@ jobs:
           OCI_TENANT_ALIAS: ${{ matrix.tenant }}
           OCI_HUNTER_LIVE_ENABLED: "true"
           OCI_HUNTER_TENANT_LIVE_APPROVED: "true"
-          OCI_REGION: ${{ vars.region }}
+          OCI_REGION: ${{ secrets.REGION }}
           OCI_COMPARTMENT_OCID: ${{ vars.OCI_COMPARTMENT_OCID }}
           OCI_SUBNET_OCID: ${{ vars.OCI_SUBNET_OCID }}
           OCI_IMAGE_OCID: ${{ vars.OCI_IMAGE_OCID }}
