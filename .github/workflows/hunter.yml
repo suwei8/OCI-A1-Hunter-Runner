@@ -43,7 +43,7 @@ jobs:
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
         with:
           repository: suwei8/OCI-A1-Hunter
-          ref: a3a2d0a4d648127a112dfd2ad587c068d4a14726
+          ref: a90da9ed77e1e5c957c30944da3f601f5d8ca301
           token: ${{ secrets.PRIVATE_REPO_TOKEN }}
           persist-credentials: false
           path: hunter
@@ -129,7 +129,7 @@ jobs:
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
         with:
           repository: suwei8/OCI-A1-Hunter
-          ref: a3a2d0a4d648127a112dfd2ad587c068d4a14726
+          ref: a90da9ed77e1e5c957c30944da3f601f5d8ca301
           token: ${{ secrets.PRIVATE_REPO_TOKEN }}
           persist-credentials: false
           path: hunter
@@ -217,10 +217,4 @@ jobs:
           OCI_PRIVATE_KEY: ${{ secrets.OCI_PRIVATE_KEY }}
           TG_BOT_TOKEN: ${{ secrets.TG_BOT_TOKEN }}
           TG_CHAT_ID: ${{ secrets.TG_CHAT_ID }}
-        run: |
-          set -o pipefail
-          .venv/bin/oci-a1-hunter --live | tee "$RUNNER_TEMP/oci-live-status.log"
-          if grep -Eq '^\\[[a-z][a-z0-9-]+\\] rate-limit:' "$RUNNER_TEMP/oci-live-status.log"; then
-            echo 'OCI 429 detected; configure a per-tenant cooldown before next live run' >&2
-            exit 75
-          fi
+        run: .venv/bin/oci-a1-hunter --live
