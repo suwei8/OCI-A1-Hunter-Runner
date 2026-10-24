@@ -58,15 +58,15 @@
 | `OCI_A1_BUDGET_OCPUS` | 可选，每租户默认 **2** |
 | `OCI_A1_BUDGET_MEMORY_GB` | 可选，每租户默认 **12** |
 
-若要运行只读 `preflight`，**在对应 Environment 的 Secrets（而非 Variables）** 额外添加：
+若要运行只读 `preflight`，可以在**私有** `OCI-A1-Hunter/src/oci_hunter/launch_settings.py` 为租户填写固定的 `OCI_SUBNET_OCID` 和 `OCI_SSH_PUBLIC_KEY`；也可使用下列 Environment Secrets 覆盖：
 
 | Environment Secret | 用途 |
 |---|---|
 | `OCI_SUBNET_OCID` | 目标 Subnet OCID（仅作只读 GetSubnet 检查） |
-| `OCI_IMAGE_OCID` | 目标 Image OCID（仅作只读 GetImage/ListShapes 检查） |
+| `OCI_IMAGE_OCID` | **可选**：明确指定 Image OCID；留空时 `preflight` 只读自动查询 Ubuntu 24.04 A1 镜像 |
 | `OCI_SSH_PUBLIC_KEY` | 登录云主机用的 **SSH 公钥**（不是私钥）；仅作格式检查 |
 
-上述 3 项用 Secrets 存放，是因为公开 Actions Job 日志可能显示普通 Variables 的值；这不会影响已成功验证的 5 个身份 Secrets。`check`、`audit`、`dry-run` 均不需要新增配置。如果未填写，`preflight` 会明确报告缺少哪些字段并安全退出，绝不创建实例。
+上述 3 项用 Secrets 存放，是因为公开 Actions Job 日志可能显示普通 Variables 的值；这不会影响已成功验证的 5 个身份 Secrets。`check`、`audit`、`dry-run` 均不需要新增配置。如果固定配置和 Secrets 均未提供子网 OCID 或 SSH 公钥，`preflight` 将明确报告缺失并安全退出；镜像可通过只读接口自动发现。**实际 `live` 仍须明确指定镜像 OCID**，且现有双重开关保持关闭。
 
 未来若明确批准 `live`，再在对应 Environment **Variable** 中设置 `OCI_TENANT_LIVE_APPROVED=true`，并同时要求 Repository Variable `OCI_HUNTER_LIVE_ENABLED=true`。**现在两者都不要启用。**
 
@@ -114,3 +114,7 @@
 | `key_file` | `OCI_PRIVATE_KEY`（PEM 私钥全文，不是路径） | Environment Secret |
 
 配置 OCI API 只需上述 **5 个 Environment Secrets**。GitHub 会将 Secrets/Variables 名称显示为大写，但引用不区分大小写。工作流将这些短名称映射为 Private Python 核心所需的内部环境变量。默认使用 `TENANCY` 作为根 Compartment ID；不要求额外 Compartment OCID。OCI SDK 使用内存中的 `key_content`，不把私钥写入文件。
+
+### 2026-10-24 配置简化
+
+私有核心支持 `TENANT_LAUNCH_DEFAULTS`（分别对应 `ap-singapore-2-8`、`ap-tokyo-1-2`）：填写真实子网 OCID 和 SSH **公钥**，并保持现有 Environment Secrets 优先。当前固定值为空，须由所有者填写；不能编造子网或 SSH 密钥。`preflight` 的镜像若不填写，会调用 OCI 只读 `ListImages`，限定 Ubuntu 24.04 + A1.Flex，择最新 AVAILABLE 镜像，并继续执行 GetImage/ListShapes 校验。失败时不调用创建 API。
