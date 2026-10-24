@@ -1,6 +1,6 @@
 # OCI-A1-Hunter-Runner (Public / 多租户工作流)
 
-**生产试运行入口（v1.0-RC1）：** [查看当前验收证据及单租户上线操作单](docs/GO_LIVE.md)。已通过最新 73 项离线回归测试；历史只读 preflight 成功；**尚未授权或验证 live 创建**，需要操作者明确启用。
+**生产试运行入口（v1.0-RC1）：** [查看当前验收证据及单租户上线操作单](docs/GO_LIVE.md)。已通过最新 82 项离线回归测试；历史只读 preflight 成功；**尚未授权或验证 live 创建**，需要操作者明确启用。
 
 公开的 GitHub-hosted Actions 调度层；实际 Python 核心存放在 Private 仓库 [suwei8/OCI-A1-Hunter](https://github.com/suwei8/OCI-A1-Hunter)。
 
@@ -61,14 +61,14 @@
 | `OCI_A1_BUDGET_OCPUS` | 可选，每租户默认 **2** |
 | `OCI_A1_BUDGET_MEMORY_GB` | 可选，每租户默认 **12** |
 
-若要运行只读 `preflight`，只需把所有租户共用的 `OCI_SSH_PUBLIC_KEY` 设置为上面的 **Repository Secret**（只添加一次）。子网可以自动发现，也可在私有 `OCI-A1-Hunter/src/oci_hunter/launch_settings.py` 为个别租户固定 `OCI_SUBNET_OCID`，或使用下列可选 Environment Secrets 覆盖：
+`preflight` 和经授权的 `live` **都可以不配置任何子网或镜像 OCID**。把所有租户共用的 `OCI_SSH_PUBLIC_KEY` 放在唯一的 **Repository Secret**（只添加一次）；程序会在通过库存/预算检查后用只读 API 找到唯一 AVAILABLE 的现有子网，并选择兼容的 Ubuntu 24.04 A1 镜像。需要固定子网或镜像时，再使用以下**可选** Environment Secrets：
 
 | Environment Secret | 用途 |
 |---|---|
-| `OCI_SUBNET_OCID` | 目标 Subnet OCID（仅作只读 GetSubnet 检查） |
-| `OCI_IMAGE_OCID` | **可选**：明确指定 Image OCID；留空时 `preflight` 只读自动查询 Ubuntu 24.04 A1 镜像 |
+| `OCI_SUBNET_OCID` | 可选。明确指定目标子网；缺省时只读发现，多个候选时必须手动指定 |
+| `OCI_IMAGE_OCID` | 可选。固定 Image OCID；缺省时 `preflight` / `live` 自动选择最新 AVAILABLE Ubuntu 24.04 A1 镜像 |
 
-上述租户专属资源 OCID 可用 Secrets 存放，是因为公开 Actions Job 日志可能显示普通 Variables 的值；这不会影响已成功验证的 5 个身份 Secrets。`check`、`audit`、`dry-run` 均不需要新增配置。如果没有共享 Repository Secret `OCI_SSH_PUBLIC_KEY`，或固定配置和 Secrets 均未提供公钥，`preflight` 将明确报告缺失并安全退出；镜像可通过只读接口自动发现。**实际 `live` 仍须明确指定镜像 OCID**，只需一次全局授权开关；没有自动调度。
+上述租户专属资源 OCID 可用 Secrets 存放，是因为公开 Actions Job 日志可能显示普通 Variables 的值；这不会影响已成功验证的 5 个身份 Secrets。`check`、`audit`、`dry-run` 均不需要新增配置。如果没有共享 Repository Secret `OCI_SSH_PUBLIC_KEY`，且私有固定配置中也没有公钥，`preflight` / `live` 将拒绝执行。**正式 `live` 不再强制要求 `OCI_SUBNET_OCID` 或 `OCI_IMAGE_OCID`**；选择不唯一、查询失败或配置不兼容时会安全停止。依旧只需一个全局授权开关；尚无自动调度。
 
 执行 `live` 前，只需要在 **Repository Variables** 中一次性设置 `OCI_HUNTER_LIVE_ENABLED=true`，再手动选择唯一目标租户；**不需要任何 Environment 审批变量**。如启用了 GitHub Environments 的 Required reviewers，仍须完成 GitHub 原生审批；结束后把全局开关改回非 `true`。
 
@@ -92,7 +92,7 @@
 
 工作流使用固定的 Private commit、GitHub-hosted Runner、`persist-credentials:false`、只读 `GITHUB_TOKEN` 和每租户独立并发锁。不使用自托管 OCI 主机，不将 OCI 凭证写入仓库/数据库/永久文件。
 
-`check` / `audit` / `preflight` 如失败，新版核心会给出安全的阶段性原因（`OCI client initialization` / `OCI availability-domain query` / `OCI instances query`），并分类为 DNS、TCP 连接、TLS、连接超时、读取超时或 OCI HTTP 状态。该模式单次请求连接超时 5 秒、读取超时 20 秒，不打印原始请求异常、Endpoint 或 OCI 身份信息。`REGION` 仍为每个 Environment 原有的 Secret，**不需要修改或新增任何一个 OCI Secret**。建议先运行 `dry-run` 让离线测试通过，再运行 `audit` + `all` 核对可查询的租户树（仅使用已有 5 个 Secrets，无需增加 Compartment OCID）。然后分别为拟正式创建的租户准备上面 3 个 Environment Secrets，运行 `preflight`（仍为只读）。
+`check` / `audit` / `preflight` 如失败，新版核心会给出安全的阶段性原因（`OCI client initialization` / `OCI availability-domain query` / `OCI instances query`），并分类为 DNS、TCP 连接、TLS、连接超时、读取超时或 OCI HTTP 状态。该模式单次请求连接超时 5 秒、读取超时 20 秒，不打印原始请求异常、Endpoint 或 OCI 身份信息。`REGION` 仍为每个 Environment 原有的 Secret，**不需要修改或新增任何一个 OCI Secret**。建议先运行 `dry-run` 让离线测试通过，再运行 `audit` + `all` 核对可查询的租户树（仅使用已有 5 个 Secrets，无需增加 Compartment OCID）。确认共享 Repository Secret `OCI_SSH_PUBLIC_KEY` 后，运行 `preflight`（仍为只读）；不必再为每个租户准备子网或镜像 Secrets。
 
 ### 安全范围与限制
 
@@ -103,7 +103,7 @@
 5. TG Bot/Chat ID 在 Repository Secrets 中共享配置一份，消息会注明租户**别名**，不要用真实账号标识作为公开别名。
 6. 当前没有自动 cron。真实定时任务必须在完成所有租户的只读校验、IAM 最小权限和安全审查后单独启用。
 
-下一步：现有 `dry-run` 与 `audit` 已通过；请运行更新后的 `dry-run`（验证新单元测试），按需添加 3 个新的 Environment Secrets 后执行 `preflight`。只有预检通过、确认 IAM 权限和预算并单独授权后，才讨论 `live`；目前继续不开放定时自动创建。
+下一步：请在最新版本上重新运行单租户 `preflight`，确认 OCI 读取权限、配额和兼容 AD，再在全局授权开关已启用、免费额度和潜在费用风险已确认的前提下手动运行同一租户 `live`。自动子网/镜像发现不需要添加新的租户 Secrets；仍无自动定时创建。
 
 ### OCI 官方配置字段映射
 
@@ -119,10 +119,10 @@
 
 ### 2026-10-24 配置简化
 
-私有核心支持 `TENANT_LAUNCH_DEFAULTS`（分别对应 `ap-singapore-2-8`、`ap-tokyo-1-2`）：填写真实子网 OCID 和 SSH **公钥**，并保持现有 Environment Secrets 优先。当前固定值为空，须由所有者填写；不能编造子网或 SSH 密钥。`preflight` 的镜像若不填写，会调用 OCI 只读 `ListImages`，限定 Ubuntu 24.04 + A1.Flex，择最新 AVAILABLE 镜像，并继续执行 GetImage/ListShapes 校验。失败时不调用创建 API。
+私有核心提供可选 `TENANT_LAUNCH_DEFAULTS` 覆盖，但**不需要**为 `ap-singapore-2-8`、`ap-tokyo-1-2` 逐个填写子网或 SSH 公钥；统一公钥使用 Repository Secret。缺少子网/镜像 OCID 时，`preflight` 和经授权的 `live` 使用只读 API 寻找现有子网及最新 Ubuntu 24.04/A1.Flex 镜像，再检查 GetSubnet/GetImage/ListShapes；模糊或无兼容资源即安全失败。
 
 ### VCN / Subnet 自动复用（新）
 
-`preflight` 未提供 `OCI_SUBNET_OCID` 时，会调用只读 OCI `ListVcns` / `ListSubnets` 扫描当前区域已经审计的 Compartment。仅有一个 AVAILABLE VCN 下的 AVAILABLE 子网时自动复用；发现多个候选需明确选择；没有可读的候选就停止，不会创建网络。 `OCI_IMAGE_OCID` 也可留空，由预检自动发现 Ubuntu 24.04 A1 镜像。现阶段只需在 Repository Secrets 中设置一次 `OCI_SSH_PUBLIC_KEY` 即可尝试自动发现，不过网络多候选时仍需指定子网。正式 `live` 仍要求明确的子网、镜像和公钥，并受一个 Repository 全局开关保护。无自动建网或定时任务。
+`preflight` 和已授权的 `live` 未提供 `OCI_SUBNET_OCID` 时，会调用只读 OCI `ListVcns` / `ListSubnets` 扫描当前区域的审计范围。仅有一个 AVAILABLE VCN 下的 AVAILABLE 子网时自动复用；发现多个候选需明确选择；没有可读的候选就停止，不会创建网络。 `OCI_IMAGE_OCID` 也可留空，由预检或已授权的 `live` 自动发现 Ubuntu 24.04 A1 镜像。现阶段只需在 Repository Secrets 中设置一次 `OCI_SSH_PUBLIC_KEY` 即可尝试自动发现，不过网络多候选时仍需指定子网。正式 `live` 只强制要求公钥，子网/镜像支持安全的只读自动发现，并受一个 Repository 全局开关保护。无自动建网或定时任务。
 
 **共享公钥唯一入口：** Public Runner → Settings → Secrets and variables → Actions → **Repository secrets** → `OCI_SSH_PUBLIC_KEY`。所有 Environment 的任务均引用同一个 `secrets.OCI_SSH_PUBLIC_KEY`。不要给每个租户重复添加；若之前某个 Environment 曾设置同名 Secret，建议先核对并移除那个旧值，因为 GitHub 同名 Environment Secret 会覆盖 Repository Secret。OCI API 认证的 TENANCY/USER/FINGERPRINT/OCI_PRIVATE_KEY/REGION 仍必须各租户隔离。
