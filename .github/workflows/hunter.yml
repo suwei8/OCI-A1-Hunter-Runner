@@ -43,7 +43,7 @@ jobs:
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
         with:
           repository: suwei8/OCI-A1-Hunter
-          ref: a90da9ed77e1e5c957c30944da3f601f5d8ca301
+          ref: 0b3dfdddb67a94248bd965bfda07934474248afb
           token: ${{ secrets.PRIVATE_REPO_TOKEN }}
           persist-credentials: false
           path: hunter
@@ -120,26 +120,17 @@ jobs:
       group: oci-a1-hunter-${{ matrix.tenant }}
       cancel-in-progress: false
     steps:
-      - name: Diagnose live approval flags before OCI setup
+      - name: Check global live authorization before OCI setup
         if: ${{ inputs.mode == 'live' }}
         env:
           GLOBAL_LIVE_APPROVED: ${{ vars.OCI_HUNTER_LIVE_ENABLED == 'true' }}
-          TENANT_LIVE_APPROVED: ${{ vars.OCI_TENANT_LIVE_APPROVED == 'true' }}
         run: |
-          missing=0
           if [ "$GLOBAL_LIVE_APPROVED" != "true" ]; then
-            echo "::error::Global gate missing: Repository Actions Variable OCI_HUNTER_LIVE_ENABLED must equal true (check Environment overrides)."
-            missing=1
-          fi
-          if [ "$TENANT_LIVE_APPROVED" != "true" ]; then
-            echo "::error::Tenant gate missing: selected GitHub Environment Variable OCI_TENANT_LIVE_APPROVED must equal true (not a Secret)."
-            missing=1
-          fi
-          if [ "$missing" -ne 0 ]; then
+            echo "::error::Set one Repository Actions Variable: OCI_HUNTER_LIVE_ENABLED=true (remove conflicting Environment override)."
             echo "OCI live blocked before checkout; no OCI API request made."
             exit 1
           fi
-          echo "Both live approval gates are enabled."
+          echo "Global live approval enabled; single selected tenancy only."
       - name: Require read-only private source token
         env:
           REPO_TOKEN: ${{ secrets.PRIVATE_REPO_TOKEN }}
@@ -149,7 +140,7 @@ jobs:
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
         with:
           repository: suwei8/OCI-A1-Hunter
-          ref: a90da9ed77e1e5c957c30944da3f601f5d8ca301
+          ref: 0b3dfdddb67a94248bd965bfda07934474248afb
           token: ${{ secrets.PRIVATE_REPO_TOKEN }}
           persist-credentials: false
           path: hunter
@@ -197,27 +188,20 @@ jobs:
             *) echo "Unsupported read-only mode"; exit 1 ;;
           esac
 
-      - name: Block unauthorized tenant live request
-        if: ${{ inputs.mode == 'live' && (vars.OCI_HUNTER_LIVE_ENABLED != 'true' || vars.OCI_TENANT_LIVE_APPROVED != 'true') }}
-        run: |
-          echo "Live blocked; require global OCI_HUNTER_LIVE_ENABLED and per-tenant OCI_TENANT_LIVE_APPROVED"
-          exit 1
-
       - name: Enforce tenant cooldown before live
-        if: ${{ inputs.mode == 'live' && vars.OCI_HUNTER_LIVE_ENABLED == 'true' && vars.OCI_TENANT_LIVE_APPROVED == 'true' }}
+        if: ${{ inputs.mode == 'live' && vars.OCI_HUNTER_LIVE_ENABLED == 'true' }}
         env:
           COOLDOWN_UNTIL: ${{ vars.OCI_HUNTER_COOLDOWN_UNTIL }}
         run: |
           python3 -c 'import datetime,os,sys; v=os.getenv("COOLDOWN_UNTIL","").strip(); now=datetime.datetime.now(datetime.timezone.utc); t=datetime.datetime.fromisoformat(v.replace("Z","+00:00")) if v else now; sys.exit("OCI tenant cooldown active; no OCI requests") if t.tzinfo is None or now<t else print("Cooldown check passed")'
 
-      - name: Live run (single tenancy, double opt-in)
+      - name: Live run (single tenancy, global opt-in)
         id: live
-        if: ${{ inputs.mode == 'live' && vars.OCI_HUNTER_LIVE_ENABLED == 'true' && vars.OCI_TENANT_LIVE_APPROVED == 'true' }}
+        if: ${{ inputs.mode == 'live' && vars.OCI_HUNTER_LIVE_ENABLED == 'true' }}
         env:
           OCI_HUNTER_MULTI_TENANT: "true"
           OCI_TENANT_ALIAS: ${{ matrix.tenant }}
           OCI_HUNTER_LIVE_ENABLED: "true"
-          OCI_HUNTER_TENANT_LIVE_APPROVED: "true"
           OCI_HUNTER_LOW_REQUEST_ENABLED: ${{ vars.OCI_HUNTER_LOW_REQUEST_ENABLED }}
           OCI_HUNTER_INITIAL_INVENTORY_CONFIRMED: ${{ vars.OCI_HUNTER_INITIAL_INVENTORY_CONFIRMED }}
           OCI_REGION: ${{ secrets.REGION }}
