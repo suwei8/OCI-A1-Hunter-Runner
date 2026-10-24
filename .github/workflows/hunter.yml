@@ -154,9 +154,10 @@ jobs:
           OCI_A1_BUDGET_OCPUS: ${{ vars.OCI_A1_BUDGET_OCPUS }}
           OCI_A1_BUDGET_MEMORY_GB: ${{ vars.OCI_A1_BUDGET_MEMORY_GB }}
           OCI_AD_NAMES: ${{ vars.OCI_AD_NAMES }}
-          # Environment Secrets avoid revealing actual OCIDs in public job logs.
+          # Subnet/image may be Environment Secrets; SSH public key is ONE shared Repository Secret.
           OCI_SUBNET_OCID: ${{ secrets.OCI_SUBNET_OCID }}
           OCI_IMAGE_OCID: ${{ secrets.OCI_IMAGE_OCID }}
+          # Shared Repository Secret OCI_SSH_PUBLIC_KEY (do not duplicate per Environment).
           OCI_SSH_PUBLIC_KEY: ${{ secrets.OCI_SSH_PUBLIC_KEY }}
           OCI_TENANCY_OCID: ${{ secrets.tenancy }}
           OCI_USER_OCID: ${{ secrets.user }}
@@ -189,6 +190,7 @@ jobs:
           OCI_COMPARTMENT_OCID: ${{ vars.OCI_COMPARTMENT_OCID }}
           OCI_SUBNET_OCID: ${{ secrets.OCI_SUBNET_OCID }}
           OCI_IMAGE_OCID: ${{ secrets.OCI_IMAGE_OCID }}
+          # Shared Repository Secret OCI_SSH_PUBLIC_KEY (do not duplicate per Environment).
           OCI_SSH_PUBLIC_KEY: ${{ secrets.OCI_SSH_PUBLIC_KEY }}
           OCI_INSTANCE_NAME: ${{ vars.OCI_INSTANCE_NAME }}
           OCI_GUARD_COMPARTMENT_OCIDS: ${{ vars.OCI_GUARD_COMPARTMENT_OCIDS }}
