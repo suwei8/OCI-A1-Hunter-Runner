@@ -183,6 +183,13 @@ jobs:
           echo "Live blocked; require global OCI_HUNTER_LIVE_ENABLED and per-tenant OCI_TENANT_LIVE_APPROVED"
           exit 1
 
+      - name: Enforce tenant cooldown before live
+        if: ${{ inputs.mode == 'live' && vars.OCI_HUNTER_LIVE_ENABLED == 'true' && vars.OCI_TENANT_LIVE_APPROVED == 'true' }}
+        env:
+          COOLDOWN_UNTIL: ${{ vars.OCI_HUNTER_COOLDOWN_UNTIL }}
+        run: |
+          python3 -c 'import datetime,os,sys; v=os.getenv("COOLDOWN_UNTIL","").strip(); now=datetime.datetime.now(datetime.timezone.utc); t=datetime.datetime.fromisoformat(v.replace("Z","+00:00")) if v else now; sys.exit("OCI tenant cooldown active; no OCI requests") if t.tzinfo is None or now<t else print("Cooldown check passed")'
+
       - name: Live run (single tenancy, double opt-in)
         if: ${{ inputs.mode == 'live' && vars.OCI_HUNTER_LIVE_ENABLED == 'true' && vars.OCI_TENANT_LIVE_APPROVED == 'true' }}
         env:
