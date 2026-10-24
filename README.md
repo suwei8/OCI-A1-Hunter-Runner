@@ -1,5 +1,7 @@
 # OCI-A1-Hunter-Runner (Public / 多租户工作流)
 
+**生产试运行入口（v1.0-RC1）：** [查看当前验收证据及单租户上线操作单](docs/GO_LIVE.md)。已通过最新 73 项离线回归测试；历史只读 preflight 成功；**尚未授权或验证 live 创建**，需要操作者明确启用。
+
 公开的 GitHub-hosted Actions 调度层；实际 Python 核心存放在 Private 仓库 [suwei8/OCI-A1-Hunter](https://github.com/suwei8/OCI-A1-Hunter)。
 
 > **当前安全状态：只有手动触发，没有 `schedule`；默认 `dry-run` 不访问 OCI。** 不配置或授权 `live` 就不会创建实例。Public 工作流日志公开，禁止在日志或 artifact 中存放密钥。
