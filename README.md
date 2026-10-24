@@ -118,3 +118,7 @@
 ### 2026-10-24 配置简化
 
 私有核心支持 `TENANT_LAUNCH_DEFAULTS`（分别对应 `ap-singapore-2-8`、`ap-tokyo-1-2`）：填写真实子网 OCID 和 SSH **公钥**，并保持现有 Environment Secrets 优先。当前固定值为空，须由所有者填写；不能编造子网或 SSH 密钥。`preflight` 的镜像若不填写，会调用 OCI 只读 `ListImages`，限定 Ubuntu 24.04 + A1.Flex，择最新 AVAILABLE 镜像，并继续执行 GetImage/ListShapes 校验。失败时不调用创建 API。
+
+### VCN / Subnet 自动复用（新）
+
+`preflight` 未提供 `OCI_SUBNET_OCID` 时，会调用只读 OCI `ListVcns` / `ListSubnets` 扫描当前区域已经审计的 Compartment。仅有一个 AVAILABLE VCN 下的 AVAILABLE 子网时自动复用；发现多个候选需明确选择；没有可读的候选就停止，不会创建网络。 `OCI_IMAGE_OCID` 也可留空，由预检自动发现 Ubuntu 24.04 A1 镜像。现阶段只需提供 `OCI_SSH_PUBLIC_KEY`（可在私有核心租户配置中填写或在 Environment Secrets 中设置）即可尝试自动发现，不过网络多候选时仍需指定子网。正式 `live` 仍要求明确的子网、镜像和公钥以及原有两级人工授权。无自动建网或定时任务。
