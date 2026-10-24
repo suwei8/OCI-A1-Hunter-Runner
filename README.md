@@ -12,7 +12,7 @@
 - Private Repository：固定 SHA 的 Python OCI 核心；不包含真实 OCI 凭证。
 - GitHub Environment：**每个 OCI Tenancy 一个独立 Environment**（例如 `ap-singapore-2-8` / `ap-singapore-2-9`），拥有独立的 OCI API Secrets、可选配额配置；Telegram Bot 由 Repository Secrets 统一管理。
 - `check`（快速检查）、`audit`（递归租户 Compartment 审计）和 `preflight`（正式启动配置只读预检）均可选择单个租户或 `all`；独立矩阵 Job 执行（最多同时 2 个，失败互不取消）。
-- `live` 强制选单个租户；同时需要全局 + 单租户的人工开关。默认均关闭。
+- `live` 必须由用户手动选择单个租户，只需要 **一个 Repository Variable `OCI_HUNTER_LIVE_ENABLED=true`**；不再需要每租户重复添加 `OCI_TENANT_LIVE_APPROVED`。默认关闭。
 - 账号之间不共享 OCI 私钥；每个任务都在临时 GitHub-hosted Runner 中执行。不能承诺绝对保密：拥有 Public 工作流写权限的人仍有机会修改代码窃取其可访问的 Secrets，因此应限制写权限并设置 Environment 审批保护。部署作业引用对应 Environment；普通 `dry-run` 完全不引用任何 Environment。
 
 ### 1. 配置 Public Repository 级别的参数
@@ -68,9 +68,9 @@
 | `OCI_SUBNET_OCID` | 目标 Subnet OCID（仅作只读 GetSubnet 检查） |
 | `OCI_IMAGE_OCID` | **可选**：明确指定 Image OCID；留空时 `preflight` 只读自动查询 Ubuntu 24.04 A1 镜像 |
 
-上述租户专属资源 OCID 可用 Secrets 存放，是因为公开 Actions Job 日志可能显示普通 Variables 的值；这不会影响已成功验证的 5 个身份 Secrets。`check`、`audit`、`dry-run` 均不需要新增配置。如果没有共享 Repository Secret `OCI_SSH_PUBLIC_KEY`，或固定配置和 Secrets 均未提供公钥，`preflight` 将明确报告缺失并安全退出；镜像可通过只读接口自动发现。**实际 `live` 仍须明确指定镜像 OCID**，且现有双重开关保持关闭。
+上述租户专属资源 OCID 可用 Secrets 存放，是因为公开 Actions Job 日志可能显示普通 Variables 的值；这不会影响已成功验证的 5 个身份 Secrets。`check`、`audit`、`dry-run` 均不需要新增配置。如果没有共享 Repository Secret `OCI_SSH_PUBLIC_KEY`，或固定配置和 Secrets 均未提供公钥，`preflight` 将明确报告缺失并安全退出；镜像可通过只读接口自动发现。**实际 `live` 仍须明确指定镜像 OCID**，只需一次全局授权开关；没有自动调度。
 
-未来若明确批准 `live`，再在对应 Environment **Variable** 中设置 `OCI_TENANT_LIVE_APPROVED=true`，并同时要求 Repository Variable `OCI_HUNTER_LIVE_ENABLED=true`。**现在两者都不要启用。**
+执行 `live` 前，只需要在 **Repository Variables** 中一次性设置 `OCI_HUNTER_LIVE_ENABLED=true`，再手动选择唯一目标租户；**不需要任何 Environment 审批变量**。如启用了 GitHub Environments 的 Required reviewers，仍须完成 GitHub 原生审批；结束后把全局开关改回非 `true`。
 
 **迁移提醒**：Public 工作流现已统一读取每个 Environment 的 `USER`、`FINGERPRINT`、`TENANCY`、`OCI_PRIVATE_KEY` 及 `REGION`。此前使用的 `OCI_USER_OCID`、`OCI_FINGERPRINT`、`OCI_TENANCY_OCID`、`OCI_REGION` 是旧配置名，应迁移后删除，避免重复和混淆。尤其不要在 Repository Secrets 设置共享的 OCI 租户凭证。
 
@@ -87,7 +87,7 @@
 | `audit` | `all` | 对已登记的每个租户单独进行可查询 Compartment 审计，不创建实例 |
 | `preflight` | `all` | 用每个租户独立的 Environment Secrets，只读验证子网、镜像、SSH 公钥、A1 形状兼容性以及当前区域 A1 用量；缺配置则安全失败 |
 | `preflight` | `ap-singapore-2-8` | 只诊断单个租户；不调用创建实例 API |
-| `live` | `ap-singapore-2-8` | **可能创建实例**，受两级开关保护 |
+| `live` | `ap-singapore-2-8` | **可能创建实例**，受全局开关及单租户手动选择保护 |
 | `live` | `all` | **拒绝执行**；禁止跨全部租户一键创建 |
 
 工作流使用固定的 Private commit、GitHub-hosted Runner、`persist-credentials:false`、只读 `GITHUB_TOKEN` 和每租户独立并发锁。不使用自托管 OCI 主机，不将 OCI 凭证写入仓库/数据库/永久文件。
@@ -123,6 +123,6 @@
 
 ### VCN / Subnet 自动复用（新）
 
-`preflight` 未提供 `OCI_SUBNET_OCID` 时，会调用只读 OCI `ListVcns` / `ListSubnets` 扫描当前区域已经审计的 Compartment。仅有一个 AVAILABLE VCN 下的 AVAILABLE 子网时自动复用；发现多个候选需明确选择；没有可读的候选就停止，不会创建网络。 `OCI_IMAGE_OCID` 也可留空，由预检自动发现 Ubuntu 24.04 A1 镜像。现阶段只需在 Repository Secrets 中设置一次 `OCI_SSH_PUBLIC_KEY` 即可尝试自动发现，不过网络多候选时仍需指定子网。正式 `live` 仍要求明确的子网、镜像和公钥以及原有两级人工授权。无自动建网或定时任务。
+`preflight` 未提供 `OCI_SUBNET_OCID` 时，会调用只读 OCI `ListVcns` / `ListSubnets` 扫描当前区域已经审计的 Compartment。仅有一个 AVAILABLE VCN 下的 AVAILABLE 子网时自动复用；发现多个候选需明确选择；没有可读的候选就停止，不会创建网络。 `OCI_IMAGE_OCID` 也可留空，由预检自动发现 Ubuntu 24.04 A1 镜像。现阶段只需在 Repository Secrets 中设置一次 `OCI_SSH_PUBLIC_KEY` 即可尝试自动发现，不过网络多候选时仍需指定子网。正式 `live` 仍要求明确的子网、镜像和公钥，并受一个 Repository 全局开关保护。无自动建网或定时任务。
 
 **共享公钥唯一入口：** Public Runner → Settings → Secrets and variables → Actions → **Repository secrets** → `OCI_SSH_PUBLIC_KEY`。所有 Environment 的任务均引用同一个 `secrets.OCI_SSH_PUBLIC_KEY`。不要给每个租户重复添加；若之前某个 Environment 曾设置同名 Secret，建议先核对并移除那个旧值，因为 GitHub 同名 Environment Secret 会覆盖 Repository Secret。OCI API 认证的 TENANCY/USER/FINGERPRINT/OCI_PRIVATE_KEY/REGION 仍必须各租户隔离。
