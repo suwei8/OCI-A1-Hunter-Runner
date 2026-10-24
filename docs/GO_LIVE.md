@@ -22,9 +22,9 @@
 3. 在 OCI Console 核对该 Tenancy / Region 的 **VM.Standard.A1.Flex** 真实剩余额度、免费套餐或 PAYG 计费风险，以及 IAM **最小必要创建权限**。当前 CI 并不能证明 Create 权限已生效。
 4. 为选定租户的 GitHub Environment Secrets 明确填入 `OCI_SUBNET_OCID` 和 `OCI_IMAGE_OCID`；仅 preflight 的自动发现**不会保存**这两个 OCID，也不会自动传给将来的 live。共享 SSH 公钥使用 Repository Secret `OCI_SSH_PUBLIC_KEY`；不要填写 SSH 私钥。当前两项 Environment Secrets 是否已填写无法从公开日志确认。
 5. 对照 preflight 实际识别的区域、子网、镜像和 AD；如果启用低请求模式，需要先完成全租户 inventory 核对，并显式设置有效的 `OCI_AD_NAMES`。否则可保持低请求开关关闭，live 会执行保守的目录扫描。
-6. **仅在所有检查合格且操作者明确批准创建实例后**：Repository Variable `OCI_HUNTER_LIVE_ENABLED=true`，选定租户 Environment Variable `OCI_TENANT_LIVE_APPROVED=true`；其他租户保持未批准。选择 mode=`live`、tenant=`ap-singapore-2-8` 手动运行一次。**不要选择 all；不会自动定时重试。**
+6. **仅在所有检查合格且操作者明确批准创建实例后**：只需设置一次 Repository Variable `OCI_HUNTER_LIVE_ENABLED=true`，不需要逐个租户添加 `OCI_TENANT_LIVE_APPROVED`。选择 mode=`live`、tenant=`ap-singapore-2-8` 手动运行一次。**不要选择 all；不会自动定时重试。**
 7. 在 Actions 日志查看 `created`（表示 OCI 接受创建请求，但仍可能正在 PROVISIONING），再去 OCI Console 验证实例最终状态、引导、网络和 SSH 访问；`capacity` 表示本轮无容量，可由操作者择时重新手动运行；`exists` 和 `quota` 需复核现有资源或免费额度；`rate-limit` 表示停止、退出 75，人工设置冷却期。
-8. 试运行结束，立即将 Repository Variable `OCI_HUNTER_LIVE_ENABLED` 改回非 `true`，并撤销当前 Environment 的 `OCI_TENANT_LIVE_APPROVED`，避免误操作。需要再次试运行时重新审批。
+8. 试运行结束，立即将 Repository Variable `OCI_HUNTER_LIVE_ENABLED` 改回非 `true`，避免误操作。需要再次试运行时重新审批。
 
 ## 运行限制与保护
 
@@ -36,7 +36,7 @@
 
 ## 未完成项（不冒充生产能力）
 
-- 最新 SHA 的真实 OCI preflight 复测、单租户 live 受控试运行。
+- 已使用旧 Runner 版本完成过 `ap-singapore-2-8` 的真实 OCI preflight 复测：[Actions #40079808448](https://github.com/suwei8/OCI-A1-Hunter-Runner/actions/runs/40079808448)；更新后的简化审批 Runner 仍需单租户 live 受控试运行。
 - HTTP 429 跨运行自动冷却持久化。
 - 自动间隔调度和节流策略（需单独批准，不随 RC1 开启）。
 - 创建后 PROVISIONING → RUNNING 的最终核验、网络连接和 SSH 验收。
