@@ -1,6 +1,10 @@
 name: OCI A1 Hunter (manual multi-tenancy)
 
 on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/hunter.yml'
   workflow_dispatch:
     inputs:
       mode:
@@ -26,7 +30,7 @@ permissions:
 
 jobs:
   dry-run:
-    if: ${{ inputs.mode == 'dry-run' }}
+    if: ${{ github.event_name == 'push' || inputs.mode == 'dry-run' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 12
     steps:
@@ -53,7 +57,7 @@ jobs:
         run: .venv/bin/oci-a1-hunter --dry-run
 
   prepare:
-    if: ${{ inputs.mode != 'dry-run' }}
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.mode != 'dry-run' }}
     runs-on: ubuntu-24.04
     permissions:
       contents: read
