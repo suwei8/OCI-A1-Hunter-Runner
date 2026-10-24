@@ -7,21 +7,21 @@
 
 | 检查 | 证据 | 结果 |
 |---|---|---|
-| 固定私有核心提交的离线测试 | [Actions #40079296287](https://github.com/suwei8/OCI-A1-Hunter-Runner/actions/runs/40079296287) | 73 passed；dry-run 成功；无 OCI API 请求 |
-| 新核心 SHA | `a90da9ed77e1e5c957c30944da3f601f5d8ca301` | Runner 已固定该 SHA |
-| 新 Runner SHA | `d1a21cd4fdae761cf8ae90382fc37e2e21fbea67` | CI 通过；429 返回非零退出码 75 |
+| 固定私有核心提交的离线测试 | [Actions #40082456051](https://github.com/suwei8/OCI-A1-Hunter-Runner/actions/runs/40082456051) | **82 passed**；dry-run 成功；无 OCI API 请求 |
+| 新核心 SHA | `235df23b90553929df02e01423d05261a1a10c68` | Runner 已固定该 SHA，支持 live 子网/镜像自动发现 |
+| 已验证的 Runner SHA | `8962a03cca5256ec53eb5aa9b17ac46360229bab` | CI 通过；HTTP 429 返回非零退出码 75 |
 | `ap-singapore-2-8` 历史只读预检 | [Actions #40070679114](https://github.com/suwei8/OCI-A1-Hunter-Runner/actions/runs/40070679114) | preflight 成功，1 个兼容 AD，A1 使用量 0/0，预算 2/12 |
 | `ap-tokyo-1-2` 历史只读预检 | [Actions #40070838583](https://github.com/suwei8/OCI-A1-Hunter-Runner/actions/runs/40070838583) | preflight 成功，1 个兼容 AD，A1 使用量 0/0，预算 2/12 |
 
-历史 preflight 早于最新固定 SHA，**正式试运行前应使用最新版本重新运行一次**。兼容 AD 不代表此时有空余宿主机容量，也不代表免费层权益已复核。
+[2026-10-24 的最新版本变更之前，`ap-singapore-2-8` 已有成功真实预检 #40079808448](https://github.com/suwei8/OCI-A1-Hunter-Runner/actions/runs/40079808448)。本次新增自动发现 live 代码后，**正式试运行前建议再运行一次最新 `preflight`**。兼容 AD 不代表此时有空余宿主机容量，也不代表免费层权益已复核。
 
 ## 操作顺序（先单租户，后逐个推广）
 
 1. [打开 Actions 工作流](https://github.com/suwei8/OCI-A1-Hunter-Runner/actions/workflows/hunter.yml) → **Run workflow** → 分支 `main` → mode=`preflight` → tenant=`ap-singapore-2-8` → Run workflow。此操作仅调用 OCI 查询 API，不请求创建。
 2. 日志必须出现 `preflight: OCI API OK`、`target status=ready`、`compatible ADs` 大于 0；否则停在此步排障。不要把 `rate-limit`、`quota`、`error` 或作业绿色但未输出 `preflight:` 视为通过。
 3. 在 OCI Console 核对该 Tenancy / Region 的 **VM.Standard.A1.Flex** 真实剩余额度、免费套餐或 PAYG 计费风险，以及 IAM **最小必要创建权限**。当前 CI 并不能证明 Create 权限已生效。
-4. 为选定租户的 GitHub Environment Secrets 明确填入 `OCI_SUBNET_OCID` 和 `OCI_IMAGE_OCID`；仅 preflight 的自动发现**不会保存**这两个 OCID，也不会自动传给将来的 live。共享 SSH 公钥使用 Repository Secret `OCI_SSH_PUBLIC_KEY`；不要填写 SSH 私钥。当前两项 Environment Secrets 是否已填写无法从公开日志确认。
-5. 对照 preflight 实际识别的区域、子网、镜像和 AD；如果启用低请求模式，需要先完成全租户 inventory 核对，并显式设置有效的 `OCI_AD_NAMES`。否则可保持低请求开关关闭，live 会执行保守的目录扫描。
+4. **无需再填写** `OCI_SUBNET_OCID` 和 `OCI_IMAGE_OCID`：更新后的 `live` 将自动执行只读子网/Ubuntu 镜像发现，并筛选 A1 兼容 AD。已配置的值继续优先使用。共享 SSH 公钥只需 Repository Secret `OCI_SSH_PUBLIC_KEY`（不能是 SSH 私钥）；若存在多个子网，则必须额外指定一个 `OCI_SUBNET_OCID`。自动发现增加 OCI 只读 API 调用。
+5. 确认最新 `preflight` 日志中的兼容 AD、已用量和预算。如果启用低请求模式，仍须先确认全租户资源库存并固定 `OCI_AD_NAMES`；否则保持低请求模式关闭，`live` 会保守扫描全租户 Compartment。**自动发现镜像会选最新可用版本**；若必须固定镜像，使用可选 `OCI_IMAGE_OCID`。
 6. **仅在所有检查合格且操作者明确批准创建实例后**：只需设置一次 Repository Variable `OCI_HUNTER_LIVE_ENABLED=true`，不需要逐个租户添加 `OCI_TENANT_LIVE_APPROVED`。选择 mode=`live`、tenant=`ap-singapore-2-8` 手动运行一次。**不要选择 all；不会自动定时重试。**
 7. 在 Actions 日志查看 `created`（表示 OCI 接受创建请求，但仍可能正在 PROVISIONING），再去 OCI Console 验证实例最终状态、引导、网络和 SSH 访问；`capacity` 表示本轮无容量，可由操作者择时重新手动运行；`exists` 和 `quota` 需复核现有资源或免费额度；`rate-limit` 表示停止、退出 75，人工设置冷却期。
 8. 试运行结束，立即将 Repository Variable `OCI_HUNTER_LIVE_ENABLED` 改回非 `true`，避免误操作。需要再次试运行时重新审批。
@@ -36,7 +36,7 @@
 
 ## 未完成项（不冒充生产能力）
 
-- 已使用旧 Runner 版本完成过 `ap-singapore-2-8` 的真实 OCI preflight 复测：[Actions #40079808448](https://github.com/suwei8/OCI-A1-Hunter-Runner/actions/runs/40079808448)；更新后的简化审批 Runner 仍需单租户 live 受控试运行。
+- 原版 `ap-singapore-2-8` 真实 OCI preflight 成功：[Actions #40079808448](https://github.com/suwei8/OCI-A1-Hunter-Runner/actions/runs/40079808448)。此前首次 live 已通过全局授权但因缺少两个 OCID 停止：[Actions #40081317458](https://github.com/suwei8/OCI-A1-Hunter-Runner/actions/runs/40081317458)。更新后的自动发现版本已离线验证，但**尚未真实 live 验证实例创建**。
 - HTTP 429 跨运行自动冷却持久化。
 - 自动间隔调度和节流策略（需单独批准，不随 RC1 开启）。
 - 创建后 PROVISIONING → RUNNING 的最终核验、网络连接和 SSH 验收。
