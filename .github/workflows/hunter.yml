@@ -120,6 +120,26 @@ jobs:
       group: oci-a1-hunter-${{ matrix.tenant }}
       cancel-in-progress: false
     steps:
+      - name: Diagnose live approval flags before OCI setup
+        if: ${{ inputs.mode == 'live' }}
+        env:
+          GLOBAL_LIVE_APPROVED: ${{ vars.OCI_HUNTER_LIVE_ENABLED == 'true' }}
+          TENANT_LIVE_APPROVED: ${{ vars.OCI_TENANT_LIVE_APPROVED == 'true' }}
+        run: |
+          missing=0
+          if [ "$GLOBAL_LIVE_APPROVED" != "true" ]; then
+            echo "::error::Global gate missing: Repository Actions Variable OCI_HUNTER_LIVE_ENABLED must equal true (check Environment overrides)."
+            missing=1
+          fi
+          if [ "$TENANT_LIVE_APPROVED" != "true" ]; then
+            echo "::error::Tenant gate missing: selected GitHub Environment Variable OCI_TENANT_LIVE_APPROVED must equal true (not a Secret)."
+            missing=1
+          fi
+          if [ "$missing" -ne 0 ]; then
+            echo "OCI live blocked before checkout; no OCI API request made."
+            exit 1
+          fi
+          echo "Both live approval gates are enabled."
       - name: Require read-only private source token
         env:
           REPO_TOKEN: ${{ secrets.PRIVATE_REPO_TOKEN }}
