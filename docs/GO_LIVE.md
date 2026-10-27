@@ -34,6 +34,16 @@
 - 一次只允许一个租户 live，租户 Job 有独立 concurrency 锁；不能保证跨 OCI 区域的额度统计或实例创建完成后的联网能力。创建后仍须核对资源状态。
 - 任何复测若出现 401/403/429、错误镜像/子网、限额不明、日志泄露或未知额外费用风险，都应暂停 live 并先修复。
 
+## 已确诊故障：`HTTP 400 CannotParseRequest`（2026-10-27）
+
+两个租户（`ap-singapore-2-8`、`ap-tokyo-1-2`）的 live 运行 [#40482032994](https://github.com/suwei8/OCI-A1-Hunter-Runner/actions/runs/40482032994)、[#40483617489](https://github.com/suwei8/OCI-A1-Hunter-Runner/actions/runs/40483617489) 均在 LaunchInstance 返回 `400/CannotParseRequest`，而 payload 经真实 OCI SDK 序列化验证结构完全合法、preflight 全绿。
+
+**根因（高置信度）**：环境 Secret `OCI_TENANCY_OCID`（以及 `OCI_USER_OCID`、`OCI_FINGERPRINT`）值末尾带有一个换行符 `\n`（典型成因：`echo "..." | gh secret set`）。日志 env 块中这三个变量后各有一行空白即为证据。读路径经 `_auth_scalar` 统一 `strip()`，故全部只读 API 正常；但启动 payload 的 `compartmentId` 直接使用未 `strip` 的原始值，`"ocid1.tenancy.oc1..xxxx\n"` 到达 OCI 后被报为 `CannotParseRequest`。
+
+**修复**：
+- 私有核心 `cf189f3`：`build_launch_details` 对全部 env 派生字段执行 `strip()`，wire 校验器对 OCID 增加严格 `fullmatch`，污染的 OCID 今后在本地即报 `LaunchPayloadSchemaError`，不再到达 OCI。
+- 运维侧：重新设置 `OCI_TENANCY_OCID` 环境 Secret（值结尾不要换行；推荐 `gh secret set --body` 或在网页 UI 中粘贴）。`OCI_USER_OCID`/`OCI_FINGERPRINT` 同样建议清理，虽然当前仅用于已 strip 的签名配置。
+
 ## 未完成项（不冒充生产能力）
 
 - 原版 `ap-singapore-2-8` 真实 OCI preflight 成功：[Actions #40079808448](https://github.com/suwei8/OCI-A1-Hunter-Runner/actions/runs/40079808448)。此前首次 live 已通过全局授权但因缺少两个 OCID 停止：[Actions #40081317458](https://github.com/suwei8/OCI-A1-Hunter-Runner/actions/runs/40081317458)。更新后的自动发现版本已离线验证，但**尚未真实 live 验证实例创建**。
