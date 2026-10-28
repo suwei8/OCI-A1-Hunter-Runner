@@ -1,6 +1,6 @@
 # OCI A1 Hunter · v1.0-RC1 生产试运行验收单
 
-> 状态：**离线 CI 通过；两个租户存在成功的历史只读 preflight；真实 live 创建尚未验收**。
+> 状态：**离线 CI 通过；preflight 全绿；live 链路已实证走通（OCI 返回真实容量裁决 `capacity`）；尚未捕获 A1 空闲宿主机容量完成实例创建**。
 > 本文是受控试运行操作指南，**不是自动授权**。不得把 `preflight` 通过等同于 `live` 已成功。
 
 ## 已验证证据（2026-10-24 UTC）
@@ -38,11 +38,12 @@
 
 两个租户（`ap-singapore-2-8`、`ap-tokyo-1-2`）的 live 运行 [#40482032994](https://github.com/suwei8/OCI-A1-Hunter-Runner/actions/runs/40482032994)、[#40483617489](https://github.com/suwei8/OCI-A1-Hunter-Runner/actions/runs/40483617489) 均在 LaunchInstance 返回 `400/CannotParseRequest`，而 payload 经真实 OCI SDK 序列化验证结构完全合法、preflight 全绿。
 
-**根因（高置信度）**：环境 Secret `OCI_TENANCY_OCID`（以及 `OCI_USER_OCID`、`OCI_FINGERPRINT`）值末尾带有一个换行符 `\n`（典型成因：`echo "..." | gh secret set`）。日志 env 块中这三个变量后各有一行空白即为证据。读路径经 `_auth_scalar` 统一 `strip()`，故全部只读 API 正常；但启动 payload 的 `compartmentId` 直接使用未 `strip` 的原始值，`"ocid1.tenancy.oc1..xxxx\n"` 到达 OCI 后被报为 `CannotParseRequest`。
+**根因（已实证）**：环境 Secret `OCI_TENANCY_OCID`（以及 `OCI_USER_OCID`、`OCI_FINGERPRINT`）值末尾带有一个换行符 `\n`（典型成因：`echo "..." | gh secret set`）。日志 env 块中这三个变量后各有一行空白即为证据。读路径经 `_auth_scalar` 统一 `strip()`，故全部只读 API 正常；但启动 payload 的 `compartmentId` 直接使用未 `strip` 的原始值，`"ocid1.tenancy.oc1..xxxx\n"` 到达 OCI 后被报为 `CannotParseRequest`。
 
-**修复**：
-- 私有核心 `cf189f3`：`build_launch_details` 对全部 env 派生字段执行 `strip()`，wire 校验器对 OCID 增加严格 `fullmatch`，污染的 OCID 今后在本地即报 `LaunchPayloadSchemaError`，不再到达 OCI。
-- 运维侧：重新设置 `OCI_TENANCY_OCID` 环境 Secret（值结尾不要换行；推荐 `gh secret set --body` 或在网页 UI 中粘贴）。`OCI_USER_OCID`/`OCI_FINGERPRINT` 同样建议清理，虽然当前仅用于已 strip 的签名配置。
+**修复与验证**：
+- 私有核心 `cf189f3`：`build_launch_details` 对全部 env 派生字段执行 `strip()`，wire 校验器对 OCID 增加严格 `fullmatch`，污染的 OCID 今后在本地即报 `LaunchPayloadSchemaError`，不再到达 OCI。同提交还带有 4 个有界重试变体与 2 个零创建探针，用于未来同类不透明 400 的定位。
+- 实证证据：[push #40629890896](https://github.com/suwei8/OCI-A1-Hunter-Runner/actions/runs/40629890896) **105 passed**；[preflight #40629985459](https://github.com/suwei8/OCI-A1-Hunter-Runner/actions/runs/40629985459) 全绿；[live #40630095103](https://github.com/suwei8/OCI-A1-Hunter-Runner/actions/runs/40630095103) 在 Secret 仍脏的情况下返回 `capacity`（OCI 正常解析并给出真实宿主机容量裁决）——`CannotParseRequest` 消除，根因实证。
+- 运维侧（可选卫生项）：重新设置 `OCI_TENANCY_OCID` 环境 Secret（值结尾不要换行；推荐 `gh secret set --body` 或在网页 UI 中粘贴）。`OCI_USER_OCID`/`OCI_FINGERPRINT` 同样建议清理，虽然当前仅用于已 strip 的签名配置。
 
 ## 未完成项（不冒充生产能力）
 
