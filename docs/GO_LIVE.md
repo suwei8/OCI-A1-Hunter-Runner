@@ -45,6 +45,15 @@
 - 实证证据：[push #40629890896](https://github.com/suwei8/OCI-A1-Hunter-Runner/actions/runs/40629890896) **105 passed**；[preflight #40629985459](https://github.com/suwei8/OCI-A1-Hunter-Runner/actions/runs/40629985459) 全绿；[live #40630095103](https://github.com/suwei8/OCI-A1-Hunter-Runner/actions/runs/40630095103) 在 Secret 仍脏的情况下返回 `capacity`（OCI 正常解析并给出真实宿主机容量裁决）——`CannotParseRequest` 消除，根因实证。
 - 运维侧（可选卫生项）：重新设置 `OCI_TENANCY_OCID` 环境 Secret（值结尾不要换行；推荐 `gh secret set --body` 或在网页 UI 中粘贴）。`OCI_USER_OCID`/`OCI_FINGERPRINT` 同样建议清理，虽然当前仅用于已 strip 的签名配置。
 
+## 循环抢机（操作者批准的外部循环，2026-10-29）
+
+仓库内仍**不启用 `schedule:`**；循环由运维侧外部 cron 分发器实现（`~/dev_root/a1-hunt/hunt.sh`，每 6 分钟一个 tick），通过 `workflow_dispatch` 对 `ap-singapore-2-8` 单租户触发 `live`。行为：
+
+- 仅当上一次 dispatch 已 completed 才发下一轮；不叠加（另有 per-tenant 并发锁兜底）
+- `capacity` → 继续抢；`created`/`exists`/`quota`/`error` → 写 DONE 文件永久停止；`rate-limit` → 冷却 45 分钟后恢复
+- 暂停方式：`OCI_HUNTER_LIVE_ENABLED` 改回非 `true`（live 在任何 OCI 调用前自拒），或删除 cron 行
+- `created` 由工作流自身 Telegram 通知；成功后受同名实例与预算检查双重保护，不会重复创建
+
 ## 未完成项（不冒充生产能力）
 
 - 原版 `ap-singapore-2-8` 真实 OCI preflight 成功：[Actions #40079808448](https://github.com/suwei8/OCI-A1-Hunter-Runner/actions/runs/40079808448)。此前首次 live 已通过全局授权但因缺少两个 OCID 停止：[Actions #40081317458](https://github.com/suwei8/OCI-A1-Hunter-Runner/actions/runs/40081317458)。更新后的自动发现版本已离线验证，但**尚未真实 live 验证实例创建**。
